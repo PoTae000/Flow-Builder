@@ -1,0 +1,15 @@
+{
+  "name": "er-diagram-signaling",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "lib0": "^0.2.98"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
