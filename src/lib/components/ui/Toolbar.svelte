@@ -1,0 +1,367 @@
+<script lang="ts">
+	import { diagram } from '$lib/stores/diagram.svelte';
+	import { theme } from '$lib/stores/theme.svelte';
+	import { collab } from '$lib/stores/collab.svelte';
+	import { i18n } from '$lib/i18n';
+
+	let {
+		onexport,
+		onimport,
+		onanalyze,
+		ontranslate,
+		ongenerate,
+		onchat,
+		onpresent,
+		oncollab,
+		onhistory,
+		ontemplates,
+		onaddrelationship,
+		onaddnote,
+		ondatadict,
+		ondomainstarter,
+		onfitcontent
+	}: {
+		onexport: () => void;
+		onimport: () => void;
+		onanalyze: () => void;
+		ontranslate: () => void;
+		ongenerate: () => void;
+		onchat: () => void;
+		onpresent: () => void;
+		oncollab: () => void;
+		onhistory?: () => void;
+		ontemplates?: () => void;
+		onaddrelationship?: () => void;
+		onaddnote?: () => void;
+		ondatadict?: () => void;
+		ondomainstarter?: () => void;
+		onfitcontent?: () => void;
+	} = $props();
+
+	function zoomIn() {
+		diagram.setZoom(diagram.zoom * 1.2);
+	}
+
+	function zoomOut() {
+		diagram.setZoom(diagram.zoom / 1.2);
+	}
+
+	function resetView() {
+		diagram.resetView();
+	}
+
+	let layouting = $state(false);
+	let showOverflow = $state(false);
+	let showDesktopOverflow = $state(false);
+
+	async function autoLayout() {
+		if (await collab.requestPermission('auto-layout')) {
+			layouting = true;
+			// Allow UI to show spinner before blocking layout
+			await new Promise(r => setTimeout(r, 50));
+			diagram.autoLayout();
+			layouting = false;
+		}
+	}
+
+	const zoomPercent = $derived(Math.round(diagram.zoom * 100));
+	const btnClass = "rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
+	const btnWithLabelClass = "flex items-center gap-1 rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
+	const overflowBtnClass = "flex w-full items-center gap-2 rounded px-3 py-2 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
+</script>
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+{#if showOverflow || showDesktopOverflow}
+	<div class="fixed inset-0 z-40" onclick={() => { showOverflow = false; showDesktopOverflow = false; }} onkeydown={(e) => { if (e.key === 'Escape') { showOverflow = false; showDesktopOverflow = false; } }}></div>
+{/if}
+
+<div class="relative flex items-center gap-1 rounded-lg bg-[var(--ui-bg-secondary)] border border-[var(--ui-border)] p-1 shadow-sm">
+	<!-- Theme toggle -->
+	<button
+		class={btnClass}
+		onclick={() => theme.toggle()}
+		title={i18n.t(theme.isDark ? 'toolbar.lightMode' : 'toolbar.darkMode')}
+		aria-label={i18n.t(theme.isDark ? 'toolbar.lightMode' : 'toolbar.darkMode')}
+	>
+		{#if theme.isDark}
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+		{:else}
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+		{/if}
+	</button>
+
+	<!-- Zoom controls -->
+	<button class={btnClass} onclick={zoomOut} title={i18n.t('toolbar.zoomOut')} aria-label={i18n.t('toolbar.zoomOut')}>
+		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>
+	</button>
+	<span class="min-w-[3rem] text-center text-xs font-light text-[var(--ui-text-muted)]">{zoomPercent}%</span>
+	<button class={btnClass} onclick={zoomIn} title={i18n.t('toolbar.zoomIn')} aria-label={i18n.t('toolbar.zoomIn')}>
+		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+	</button>
+
+	<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+	<!-- Undo/Redo -->
+	<button class={btnClass} onclick={() => diagram.undo()} disabled={!diagram.canUndo} title={i18n.t('toolbar.undo')} aria-label={i18n.t('toolbar.undo')}>
+		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" /></svg>
+	</button>
+	<button class={btnClass} onclick={() => diagram.redo()} disabled={!diagram.canRedo} title={i18n.t('toolbar.redo')} aria-label={i18n.t('toolbar.redo')}>
+		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a5 5 0 00-5 5v2M21 10l-4-4M21 10l-4 4" /></svg>
+	</button>
+
+	<!-- Desktop primary buttons (always visible on xl) -->
+	<div class="hidden xl:contents">
+		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+		<!-- Add Relationship (important, always visible) -->
+		<button class={btnWithLabelClass} onclick={onaddrelationship} title={i18n.t('toolbar.addRelationship')} aria-label={i18n.t('toolbar.addRelationship')}>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+			{i18n.t('toolbar.addRelationship')}
+		</button>
+
+		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+		<!-- AI features group -->
+		<button class={btnWithLabelClass} onclick={onanalyze} title={i18n.t('toolbar.analyze')} aria-label={i18n.t('toolbar.analyze')}>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+			{i18n.t('toolbar.ai')}
+		</button>
+
+		<button class={btnWithLabelClass} onclick={ontranslate} title={i18n.t('toolbar.translate')} aria-label={i18n.t('toolbar.translateShort')}>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+			{i18n.t('toolbar.translateShort')}
+		</button>
+
+		<button class={btnWithLabelClass} onclick={onchat} title={i18n.t('toolbar.aiChat')} aria-label={i18n.t('toolbar.aiChat')}>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+			{i18n.t('toolbar.chat')}
+		</button>
+
+		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+		<!-- Collaboration -->
+		<button class="relative {btnWithLabelClass}" onclick={oncollab} title={i18n.t('toolbar.collaboration')} aria-label={i18n.t('toolbar.collaboration')}>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+			{i18n.t('toolbar.collab')}
+			{#if collab.connected && collab.users.length > 0}
+				<span class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{collab.users.length}</span>
+			{/if}
+		</button>
+
+		<!-- Grid Toggle -->
+		<button
+			class="{btnClass} {diagram.showGrid ? '!bg-blue-100 !text-blue-600 dark:!bg-blue-900/30 dark:!text-blue-400' : ''}"
+			onclick={() => diagram.toggleGrid()}
+			title={i18n.t('toolbar.grid')}
+			aria-label={i18n.t('toolbar.grid')}
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v16h16M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" /></svg>
+		</button>
+
+		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+		<!-- Desktop overflow "..." button -->
+		<button
+			class={btnClass}
+			onclick={() => showDesktopOverflow = !showDesktopOverflow}
+			title={i18n.t('toolbar.more')}
+			aria-label={i18n.t('toolbar.more')}
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01" /></svg>
+		</button>
+	</div>
+
+	<!-- Desktop overflow dropdown -->
+	{#if showDesktopOverflow}
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg hidden xl:block">
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onimport(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+				{i18n.t('toolbar.import')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onexport(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+				{i18n.t('toolbar.export')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ongenerate(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+				{i18n.t('toolbar.generateCode')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onaddnote?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+				{i18n.t('toolbar.addNote')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ondatadict?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+				{i18n.t('toolbar.dataDict')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; resetView(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+				{i18n.t('toolbar.resetView')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onfitcontent?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5M9 15v4.5M9 15H4.5M9 15l-5.5 5.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5M15 15h4.5M15 15v4.5m0-4.5l5.5 5.5" /></svg>
+				{i18n.t('toolbar.fitContent')}
+			</button>
+			<button
+				class={overflowBtnClass}
+				onclick={() => { showDesktopOverflow = false; autoLayout(); }}
+				disabled={diagram.entities.length === 0 || layouting}
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+				{i18n.t('toolbar.layout')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onpresent(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z" /></svg>
+				{i18n.t('toolbar.present')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ontemplates?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+				{i18n.t('toolbar.templates')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ondomainstarter?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+				{i18n.t('toolbar.domainStarter')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onhistory?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+				{i18n.t('toolbar.history')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; i18n.toggle(); }}>
+				<span class="flex h-4 w-4 items-center justify-center text-xs font-bold">{i18n.isEn ? 'EN' : 'TH'}</span>
+				{i18n.t('common.langToggle')}
+			</button>
+		</div>
+	{/if}
+
+	<!-- Mobile overflow menu button -->
+	<div class="xl:hidden">
+		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+	</div>
+	<button
+		class="xl:hidden {btnClass}"
+		onclick={() => showOverflow = !showOverflow}
+		title={i18n.t('toolbar.more')}
+		aria-label={i18n.t('toolbar.more')}
+	>
+		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01" /></svg>
+	</button>
+
+	<!-- Mobile overflow dropdown -->
+	{#if showOverflow}
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg xl:hidden max-h-[70vh] overflow-y-auto">
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onimport(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+				{i18n.t('toolbar.import')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onexport(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+				{i18n.t('toolbar.export')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onaddrelationship?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+				{i18n.t('toolbar.addRelationship')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onaddnote?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+				{i18n.t('toolbar.addNote')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={resetView} aria-label={i18n.t('toolbar.resetView')}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+				{i18n.t('toolbar.resetView')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onfitcontent?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5M9 15v4.5M9 15H4.5M9 15l-5.5 5.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5M15 15h4.5M15 15v4.5m0-4.5l5.5 5.5" /></svg>
+				{i18n.t('toolbar.fitContent')}
+			</button>
+			<button
+				class={overflowBtnClass}
+				onclick={() => { showOverflow = false; autoLayout(); }}
+				disabled={diagram.entities.length === 0 || layouting}
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+				{i18n.t('toolbar.layout')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onanalyze(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+				{i18n.t('toolbar.aiAnalyze')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontranslate(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+				{i18n.t('toolbar.translateShort')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ongenerate(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+				{i18n.t('toolbar.generateCode')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onchat(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+				{i18n.t('toolbar.aiChat')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ondatadict?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+				{i18n.t('toolbar.dataDict')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class="relative {overflowBtnClass}" onclick={() => { showOverflow = false; oncollab(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+				{i18n.t('toolbar.collab')}
+				{#if collab.connected && collab.users.length > 0}
+					<span class="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{collab.users.length}</span>
+				{/if}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onpresent(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z" /></svg>
+				{i18n.t('toolbar.present')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; diagram.toggleGrid(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v16h16M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" /></svg>
+				{i18n.t('toolbar.grid')} {diagram.showGrid ? '(ON)' : ''}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontemplates?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+				{i18n.t('toolbar.templates')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ondomainstarter?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+				{i18n.t('toolbar.domainStarter')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onhistory?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+				{i18n.t('toolbar.history')}
+			</button>
+
+			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
+
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; i18n.toggle(); }}>
+				<span class="flex h-4 w-4 items-center justify-center text-xs font-bold">{i18n.isEn ? 'EN' : 'TH'}</span>
+				{i18n.t('common.langToggle')}
+			</button>
+		</div>
+	{/if}
+</div>
