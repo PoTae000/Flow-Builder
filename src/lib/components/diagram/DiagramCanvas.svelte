@@ -854,7 +854,7 @@
 						{renderer}
 						selected={diagram.selectedNodeIds.includes(entity.id)}
 						onmousedown={(e) => handleEntityMouseDown(entity.id, e)}
-						onclick={() => { if (!collab.isViewer) diagram.selectEntity(entity.id); }}
+						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(entity.id); }}
 						ontouchstart={(e) => handleEntityTouchStart(entity.id, e)}
 						oncontextmenu={(e) => handleEntityContextMenu(entity.id, e)}
 					/>
@@ -883,7 +883,7 @@
 					{node}
 					selected={diagram.selectedNodeIds.includes(node.id)}
 					onmousedown={(e) => handleEntityMouseDown(node.id, e)}
-					onclick={() => { if (!collab.isViewer) diagram.selectEntity(node.id); }}
+					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
 					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
 				/>
@@ -911,7 +911,7 @@
 					{node}
 					selected={diagram.selectedNodeIds.includes(node.id)}
 					onmousedown={(e) => handleEntityMouseDown(node.id, e)}
-					onclick={() => { if (!collab.isViewer) diagram.selectEntity(node.id); }}
+					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
 					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
 				/>
