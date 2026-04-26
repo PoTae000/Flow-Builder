@@ -109,6 +109,8 @@
 		if (showPresentation || diagram.viewOnly) return;
 		const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
 		const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
+		// If user has text selected on the page, let browser handle copy/paste natively
+		const hasTextSelection = (window.getSelection()?.toString().length ?? 0) > 0;
 
 		// Use e.code for Ctrl shortcuts — works with any keyboard layout (Thai, etc.)
 		if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
@@ -120,13 +122,13 @@
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
 			e.preventDefault();
 			diagram.redo();
-		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && !isInput) {
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && !isInput && !hasTextSelection) {
 			e.preventDefault();
 			diagram.copySelected();
-		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && !isInput) {
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && !isInput && !hasTextSelection) {
 			e.preventDefault();
 			diagram.paste();
-		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !isInput) {
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !isInput && !hasTextSelection) {
 			e.preventDefault();
 			diagram.selectAll();
 		} else if (e.key === 'Delete') {
