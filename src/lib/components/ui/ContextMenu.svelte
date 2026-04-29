@@ -96,6 +96,11 @@
 		z-index: 9998;
 	}
 
+	@keyframes menuPopIn {
+		from { opacity: 0; transform: scale(0.95); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
 	.context-menu {
 		position: fixed;
 		z-index: 9999;
@@ -106,6 +111,8 @@
 		border-radius: 8px;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 		font-family: 'Kanit', sans-serif;
+		animation: menuPopIn 0.12s ease-out;
+		transform-origin: top left;
 	}
 
 	.context-menu-divider {

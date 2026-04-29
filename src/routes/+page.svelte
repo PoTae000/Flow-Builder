@@ -22,6 +22,11 @@
 	import { initGoogleAuth } from '$lib/utils/google-auth';
 	import { dialog } from '$lib/stores/dialog.svelte';
 	import { parseShareHash } from '$lib/utils/share';
+	import { highlight } from '$lib/stores/highlight.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import OnboardingOverlayComponent from '$lib/components/ui/OnboardingOverlay.svelte';
+	import CollabIndicator from '$lib/components/ui/CollabIndicator.svelte';
+	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 
 	let ready = $state(false);
 	let showLogin = $state(false);
@@ -41,7 +46,14 @@
 	let showTemplates = $state(false);
 	let showDataDict = $state(false);
 	let showDomainStarter = $state(false);
+	let showMatrix = $state(false);
+	let showSqlQuery = $state(false);
+	let showQuiz = $state(false);
 	let mobileFormOpen = $state(false);
+	let showSearch = $state(false);
+	let searchQuery = $state('');
+	let searchIndex = $state(0);
+	let showOnboarding = $state(false);
 
 	// A8: Lazy-loaded modal components
 	let ImportModal: any = $state(null);
@@ -55,6 +67,9 @@
 	let TemplatesModal: any = $state(null);
 	let DataDictionaryPanel: any = $state(null);
 	let DomainStarterModal: any = $state(null);
+	let RelationshipMatrixPanel: any = $state(null);
+	let SqlQueryPanel: any = $state(null);
+	let QuizPanel: any = $state(null);
 
 	async function lazyImport() {
 		if (showImportModal && !ImportModal) {
@@ -90,12 +105,21 @@
 		if (showDomainStarter && !DomainStarterModal) {
 			DomainStarterModal = (await import('$lib/components/ui/DomainStarterModal.svelte')).default;
 		}
+		if (showMatrix && !RelationshipMatrixPanel) {
+			RelationshipMatrixPanel = (await import('$lib/components/ui/RelationshipMatrixPanel.svelte')).default;
+		}
+		if (showSqlQuery && !SqlQueryPanel) {
+			SqlQueryPanel = (await import('$lib/components/ui/SqlQueryPanel.svelte')).default;
+		}
+		if (showQuiz && !QuizPanel) {
+			QuizPanel = (await import('$lib/components/ui/QuizPanel.svelte')).default;
+		}
 	}
 
 	$effect(() => {
 		showImportModal; showExportModal; showAnalysis; showTranslateModal;
 		showGenerateCode; showChat; showPresentation; showHistory; showTemplates;
-		showDataDict; showDomainStarter;
+		showDataDict; showDomainStarter; showMatrix; showSqlQuery; showQuiz;
 		lazyImport();
 	});
 
@@ -105,12 +129,79 @@
 
 
 
+	// Get all selectable node IDs based on diagram type
+	function getAllNodeIds(): string[] {
+		if (diagram.diagramType === 'er') return diagram.entities.map((e) => e.id);
+		if (diagram.diagramType === 'flowchart') return diagram.flowNodes.map((n) => n.id);
+		if (diagram.diagramType === 'context') return diagram.dfdNodes.map((n) => n.id);
+		return [];
+	}
+
+	// Get search results filtered by query
+	function getSearchResults(): { id: string; name: string }[] {
+		if (!searchQuery.trim()) return [];
+		const q = searchQuery.toLowerCase();
+		if (diagram.diagramType === 'er') {
+			return diagram.entities.filter((e) => e.name.toLowerCase().includes(q)).map((e) => ({ id: e.id, name: e.name }));
+		} else if (diagram.diagramType === 'flowchart') {
+			return diagram.flowNodes.filter((n) => n.name.toLowerCase().includes(q)).map((n) => ({ id: n.id, name: n.name }));
+		} else {
+			return diagram.dfdNodes.filter((n) => n.name.toLowerCase().includes(q)).map((n) => ({ id: n.id, name: n.name }));
+		}
+	}
+
+	function selectAndPanTo(id: string) {
+		diagram.selectEntity(id);
+		// Find position of the node to center on it
+		let pos: { x: number; y: number } | undefined;
+		if (diagram.diagramType === 'er') pos = diagram.entities.find((e) => e.id === id)?.position;
+		else if (diagram.diagramType === 'flowchart') pos = diagram.flowNodes.find((n) => n.id === id)?.position;
+		else pos = diagram.dfdNodes.find((n) => n.id === id)?.position;
+		if (pos) {
+			diagram.panX = -pos.x * diagram.zoom + (diagram.canvasWidth) / 2;
+			diagram.panY = -pos.y * diagram.zoom + (diagram.canvasHeight) / 2;
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (showPresentation || diagram.viewOnly) return;
 		const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
 		const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
 		// If user has text selected on the page, let browser handle copy/paste natively
 		const hasTextSelection = (window.getSelection()?.toString().length ?? 0) > 0;
+
+		// Handle search overlay keys
+		if (showSearch) {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				showSearch = false;
+				searchQuery = '';
+				return;
+			}
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				const results = getSearchResults();
+				if (results.length > 0) searchIndex = (searchIndex + 1) % results.length;
+				return;
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				const results = getSearchResults();
+				if (results.length > 0) searchIndex = (searchIndex - 1 + results.length) % results.length;
+				return;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				const results = getSearchResults();
+				if (results.length > 0 && results[searchIndex]) {
+					selectAndPanTo(results[searchIndex].id);
+					showSearch = false;
+					searchQuery = '';
+				}
+				return;
+			}
+			return; // Let other keys go to the search input
+		}
 
 		// Use e.code for Ctrl shortcuts — works with any keyboard layout (Thai, etc.)
 		if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
@@ -131,6 +222,36 @@
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !isInput && !hasTextSelection) {
 			e.preventDefault();
 			diagram.selectAll();
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && !isInput) {
+			e.preventDefault();
+			diagram.duplicateSelected();
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') {
+			e.preventDefault();
+			showSearch = !showSearch;
+			searchQuery = '';
+			searchIndex = 0;
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyL' && !isInput) {
+			e.preventDefault();
+			const timedOut = diagram.animateLayout();
+			if (timedOut) {
+				toast.warning('Layout ใช้เวลานานเกินไป ผลลัพธ์อาจไม่สมบูรณ์');
+			}
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyG' && !isInput) {
+			e.preventDefault();
+			diagram.toggleGrid();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			diagram.clearSelection();
+		} else if (e.key === 'Tab' && !isInput) {
+			e.preventDefault();
+			const ids = getAllNodeIds();
+			if (ids.length === 0) return;
+			const currentId = diagram.selectedNodeIds[0];
+			const currentIdx = currentId ? ids.indexOf(currentId) : -1;
+			const nextIdx = e.shiftKey
+				? (currentIdx - 1 + ids.length) % ids.length
+				: (currentIdx + 1) % ids.length;
+			diagram.selectEntity(ids[nextIdx]);
 		} else if (e.key === 'Delete') {
 			if (isInput) return;
 			if (diagram.selectedNodeIds.length > 0) {
@@ -163,6 +284,7 @@
 	}
 
 	function handleChoose(type: DiagramType, name: string) {
+		const isFirstChoose = !pendingNewTab; // first-time user choosing their first diagram
 		if (pendingNewTab) {
 			session.createDiagram(name, type);
 			pendingNewTab = false;
@@ -175,6 +297,15 @@
 			session.saveNow();
 		}
 		showChooser = false;
+
+		// Trigger onboarding after first-time chooser closes
+		if (isFirstChoose && !localStorage.getItem('onboarding-done')) {
+			triggerOnboarding();
+		}
+	}
+
+	function triggerOnboarding() {
+		showOnboarding = true;
 	}
 
 	function enterApp() {
@@ -427,7 +558,7 @@
 						</div>
 					</div>
 				{:else}
-					<div class="absolute top-3 right-3 z-10 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat}>
+					<div data-onboarding="toolbar" class="absolute top-3 right-3 z-10 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat}>
 						<Toolbar
 							onexport={() => showExportModal = true}
 							onimport={async () => {
@@ -463,6 +594,10 @@
 								if (await collab.requestPermission('domain-starter')) showDomainStarter = true;
 							}}
 							onfitcontent={() => canvasComponent?.fitToContent()}
+							onmatrix={() => showMatrix = !showMatrix}
+							onsqlquery={() => showSqlQuery = !showSqlQuery}
+							onquiz={() => showQuiz = !showQuiz}
+							ontutorial={() => triggerOnboarding()}
 						/>
 					</div>
 				{/if}
@@ -475,9 +610,17 @@
 					<Minimap />
 				{/if}
 
+				<!-- Collab indicator -->
+				{#if collab.connected}
+					<div class="absolute top-3 left-3 z-10">
+						<CollabIndicator />
+					</div>
+				{/if}
+
 				<!-- Mobile FAB: open form panel -->
 				{#if !showPresentation && !diagram.viewOnly}
 					<button
+						data-onboarding="form-toggle"
 						class="fixed bottom-5 left-5 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--ui-accent)] text-[var(--ui-accent-text)] shadow-lg transition hover:opacity-90 active:opacity-80 lg:hidden"
 						onclick={() => mobileFormOpen = !mobileFormOpen}
 						aria-label="เปิดแผงฟอร์ม"
@@ -491,9 +634,12 @@
 	</div>
 {/if}
 
+<!-- Toast notifications -->
+<ToastContainer />
+
 <!-- Welcome chooser -->
 {#if showChooser}
-	<WelcomeChooser onchoose={handleChoose} />
+	<WelcomeChooser onchoose={handleChoose} onclose={pendingNewTab ? () => { showChooser = false; pendingNewTab = false; } : undefined} />
 {/if}
 
 <!-- Relationship popup -->
@@ -556,6 +702,21 @@
 	<DataDictionaryPanel onclose={() => showDataDict = false} />
 {/if}
 
+<!-- Relationship Matrix panel (lazy) -->
+{#if showMatrix && RelationshipMatrixPanel}
+	<RelationshipMatrixPanel onclose={() => showMatrix = false} />
+{/if}
+
+<!-- SQL Query Visualizer panel (lazy) -->
+{#if showSqlQuery && SqlQueryPanel}
+	<SqlQueryPanel onclose={() => { showSqlQuery = false; highlight.clear(); }} />
+{/if}
+
+<!-- Quiz panel (lazy) — stays mounted to preserve state -->
+{#if QuizPanel}
+	<QuizPanel visible={showQuiz} onclose={() => showQuiz = false} onopen={() => showQuiz = true} />
+{/if}
+
 <!-- Collaboration panel -->
 {#if showCollab}
 	<CollabPanel onclose={() => showCollab = false} />
@@ -563,6 +724,50 @@
 
 <!-- Permission vote modal -->
 <PermissionVoteModal />
+
+<!-- Search overlay -->
+{#if showSearch}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 z-50 flex items-start justify-center pt-20" onkeydown={() => {}}>
+		<div class="w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl">
+			<div class="flex items-center gap-2 border-b border-[var(--ui-border)] px-4 py-3">
+				<svg class="h-4 w-4 text-[var(--ui-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Search entities..."
+					class="flex-1 bg-transparent text-sm text-[var(--ui-text)] placeholder:text-[var(--ui-text-placeholder)] focus:outline-none"
+					autofocus
+				/>
+				<button onclick={() => { showSearch = false; searchQuery = ''; }} class="rounded p-1 text-[var(--ui-text-muted)] hover:text-[var(--ui-text)]" aria-label="Close search">
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+				</button>
+			</div>
+			{#if searchQuery.trim()}
+				{@const results = getSearchResults()}
+				<div class="max-h-60 overflow-y-auto p-1">
+					{#if results.length === 0}
+						<div class="px-4 py-3 text-xs text-[var(--ui-text-muted)]">No results</div>
+					{:else}
+						{#each results as result, i}
+							<button
+								class="flex w-full items-center gap-2 rounded-lg px-4 py-2 text-left text-sm text-[var(--ui-text)] transition {i === searchIndex ? 'bg-[var(--ui-accent)]/10' : 'hover:bg-[var(--ui-hover)]'}"
+								onclick={() => { selectAndPanTo(result.id); showSearch = false; searchQuery = ''; }}
+							>
+								{result.name}
+							</button>
+						{/each}
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- Onboarding overlay -->
+{#if showOnboarding}
+	<OnboardingOverlayComponent onclose={() => { showOnboarding = false; localStorage.setItem('onboarding-done', '1'); }} />
+{/if}
 
 <!-- Global dialog -->
 <DialogModal />

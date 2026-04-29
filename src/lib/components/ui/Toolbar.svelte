@@ -19,7 +19,11 @@
 		onaddnote,
 		ondatadict,
 		ondomainstarter,
-		onfitcontent
+		onfitcontent,
+		onmatrix,
+		onsqlquery,
+		onquiz,
+		ontutorial
 	}: {
 		onexport: () => void;
 		onimport: () => void;
@@ -36,31 +40,35 @@
 		ondatadict?: () => void;
 		ondomainstarter?: () => void;
 		onfitcontent?: () => void;
+		onmatrix?: () => void;
+		onsqlquery?: () => void;
+		onquiz?: () => void;
+		ontutorial?: () => void;
 	} = $props();
 
 	function zoomIn() {
+		diagram.smoothTransition = true;
 		diagram.setZoom(diagram.zoom * 1.2);
+		setTimeout(() => { diagram.smoothTransition = false; }, 300);
 	}
 
 	function zoomOut() {
+		diagram.smoothTransition = true;
 		diagram.setZoom(diagram.zoom / 1.2);
+		setTimeout(() => { diagram.smoothTransition = false; }, 300);
 	}
 
 	function resetView() {
-		diagram.resetView();
+		diagram.smoothResetView();
 	}
 
-	let layouting = $state(false);
 	let showOverflow = $state(false);
 	let showDesktopOverflow = $state(false);
+	const layouting = $derived(diagram.animating);
 
 	async function autoLayout() {
 		if (await collab.requestPermission('auto-layout')) {
-			layouting = true;
-			// Allow UI to show spinner before blocking layout
-			await new Promise(r => setTimeout(r, 50));
-			diagram.autoLayout();
-			layouting = false;
+			diagram.animateLayout();
 		}
 	}
 
@@ -114,7 +122,7 @@
 		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 
 		<!-- Add Relationship (important, always visible) -->
-		<button class={btnWithLabelClass} onclick={onaddrelationship} title={i18n.t('toolbar.addRelationship')} aria-label={i18n.t('toolbar.addRelationship')}>
+		<button data-onboarding="add-rel" class={btnWithLabelClass} onclick={onaddrelationship} title={i18n.t('toolbar.addRelationship')} aria-label={i18n.t('toolbar.addRelationship')}>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
 			{i18n.t('toolbar.addRelationship')}
 		</button>
@@ -148,6 +156,18 @@
 			{/if}
 		</button>
 
+		<!-- Focus Mode Toggle (ER only) -->
+		{#if diagram.diagramType === 'er'}
+			<button
+				class="{btnClass} {diagram.focusMode ? '!bg-purple-100 !text-purple-600 dark:!bg-purple-900/30 dark:!text-purple-400' : ''}"
+				onclick={() => diagram.focusMode = !diagram.focusMode}
+				title="Focus Mode"
+				aria-label="Focus Mode"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+			</button>
+		{/if}
+
 		<!-- Grid Toggle -->
 		<button
 			class="{btnClass} {diagram.showGrid ? '!bg-blue-100 !text-blue-600 dark:!bg-blue-900/30 dark:!text-blue-400' : ''}"
@@ -173,7 +193,7 @@
 
 	<!-- Desktop overflow dropdown -->
 	{#if showDesktopOverflow}
-		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg hidden xl:block">
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg hidden xl:block animate-slide-up">
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onimport(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
 				{i18n.t('toolbar.import')}
@@ -197,6 +217,18 @@
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
 				{i18n.t('toolbar.dataDict')}
 			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onmatrix?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+				{i18n.t('toolbar.matrix')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onsqlquery?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+				{i18n.t('toolbar.sqlQuery')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onquiz?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
+				{i18n.t('toolbar.quiz')}
+			</button>
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
@@ -211,7 +243,7 @@
 			<button
 				class={overflowBtnClass}
 				onclick={() => { showDesktopOverflow = false; autoLayout(); }}
-				disabled={diagram.entities.length === 0 || layouting}
+				disabled={(diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0) || layouting}
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
 				{i18n.t('toolbar.layout')}
@@ -234,6 +266,10 @@
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onhistory?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 				{i18n.t('toolbar.history')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ontutorial?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+				{i18n.t('toolbar.tutorial')}
 			</button>
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
@@ -260,7 +296,7 @@
 
 	<!-- Mobile overflow dropdown -->
 	{#if showOverflow}
-		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg xl:hidden max-h-[70vh] overflow-y-auto">
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg xl:hidden max-h-[70vh] overflow-y-auto animate-slide-up">
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onimport(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
 				{i18n.t('toolbar.import')}
@@ -294,7 +330,7 @@
 			<button
 				class={overflowBtnClass}
 				onclick={() => { showOverflow = false; autoLayout(); }}
-				disabled={diagram.entities.length === 0 || layouting}
+				disabled={(diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0) || layouting}
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
 				{i18n.t('toolbar.layout')}
@@ -322,6 +358,18 @@
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
 				{i18n.t('toolbar.dataDict')}
 			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onmatrix?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+				{i18n.t('toolbar.matrix')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onsqlquery?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+				{i18n.t('toolbar.sqlQuery')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onquiz?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
+				{i18n.t('toolbar.quiz')}
+			</button>
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
@@ -332,11 +380,6 @@
 					<span class="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">{collab.users.length}</span>
 				{/if}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onpresent(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z" /></svg>
-				{i18n.t('toolbar.present')}
-			</button>
-
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; diagram.toggleGrid(); }}>
@@ -354,6 +397,10 @@
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onhistory?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 				{i18n.t('toolbar.history')}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontutorial?.(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+				{i18n.t('toolbar.tutorial')}
 			</button>
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>

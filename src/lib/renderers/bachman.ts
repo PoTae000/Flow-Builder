@@ -1,0 +1,49 @@
+import type { Entity, CardinalityType } from '$lib/types/er';
+import type { Rect } from '$lib/types/geometry';
+import type { NotationRenderer } from './types.ts';
+
+export class BachmanRenderer implements NotationRenderer {
+	headerHeight = 36;
+	attributeRowHeight = 22;
+	minWidth = 150;
+	padding = 14;
+	inlineAttributes = true;
+	useDiamond = false;
+	useOvalAttributes = false;
+	showCardinalityText = true;
+	useArrowMarkers = true;
+
+	getEntityRect(entity: Entity): Rect {
+		const charWidth = 7.5;
+		const nameWidth = entity.name.length * charWidth + this.padding * 2;
+		const attrWidths = entity.attributes.map(
+			(a) => a.name.length * charWidth + this.padding * 2 + 20
+		);
+		const maxAttrWidth = attrWidths.length > 0 ? Math.max(...attrWidths) : 0;
+		const width = Math.max(this.minWidth, nameWidth, maxAttrWidth);
+		const height =
+			this.headerHeight +
+			Math.max(entity.attributes.length, 1) * this.attributeRowHeight +
+			8;
+
+		return { x: entity.position.x, y: entity.position.y, width, height };
+	}
+
+	formatCardinality(cardinality: CardinalityType): string {
+		// Bachman uses arrows: single arrow = 1, double arrow = many
+		const map: Record<CardinalityType, string> = {
+			'1': '1',
+			'N': 'N',
+			'M': 'M',
+			'0..1': '0..1',
+			'0..N': '0..N',
+			'1..1': '1',
+			'1..N': '1..N'
+		};
+		return map[cardinality] ?? cardinality;
+	}
+
+	getMarkerDefs(): string {
+		return '';
+	}
+}

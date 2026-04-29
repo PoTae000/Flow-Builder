@@ -5,6 +5,7 @@
 	import { presentation } from '$lib/stores/presentation.svelte';
 	import { collab } from '$lib/stores/collab.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
+	import { highlight } from '$lib/stores/highlight.svelte';
 	import { getRenderer } from '$lib/renderers/index';
 	import { getNearestConnectionPoints } from '$lib/utils/geometry';
 	import type { ConnectionPoint, Rect } from '$lib/types/geometry';
@@ -18,6 +19,7 @@
 	import DFDFlowLine from './DFDFlowLine.svelte';
 	import RemoteCursor from './RemoteCursor.svelte';
 	import ContextMenu from '../ui/ContextMenu.svelte';
+	import { i18n } from '$lib/i18n';
 
 	let svgEl: SVGSVGElement | undefined = $state();
 
@@ -94,6 +96,9 @@
 	// Context menu state
 	let contextMenu = $state<{ x: number; y: number } | null>(null);
 
+	// Snap alignment guides
+	let alignGuides = $state<{ axis: 'x' | 'y'; pos: number; from: number; to: number }[]>([]);
+
 	// Long-press timer for mobile context menu
 	let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 	let longPressStartPos: { x: number; y: number } | null = null;
@@ -105,7 +110,7 @@
 	}
 
 	function handleEntityContextMenu(nodeId: string, e: MouseEvent) {
-		if (collab.isViewer || diagram.viewOnly) return;
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -143,11 +148,30 @@
 	}
 
 	function getContextMenuItems() {
-		return [
-			{ label: 'คัดลอก', icon: '\u{1F4CB}', action: () => { diagram.copySelected(); closeContextMenu(); } },
-			{ label: 'วาง', icon: '\u{1F4CC}', action: () => { diagram.paste(); closeContextMenu(); } },
-			{ label: 'ลบ', icon: '\u{1F5D1}\uFE0F', action: () => { confirmDeleteSelected(); closeContextMenu(); }, danger: true, divider: true }
+		const items: { label: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
+			{ label: 'คัดลอก', action: () => { diagram.copySelected(); closeContextMenu(); } },
+			{ label: 'วาง', action: () => { diagram.paste(); closeContextMenu(); } },
 		];
+
+		// Lock/Unlock for ER entities
+		if (diagram.diagramType === 'er' && diagram.selectedNodeIds.length > 0) {
+			const allLocked = diagram.selectedNodeIds.every(id => diagram.entityMap.get(id)?.isLocked);
+			items.push({
+				label: allLocked ? 'ปลดล็อก' : 'ล็อกตำแหน่ง',
+				action: () => {
+					for (const id of diagram.selectedNodeIds) {
+						diagram.updateEntity(id, { isLocked: !allLocked });
+					}
+					closeContextMenu();
+				},
+				divider: true
+			});
+		}
+
+		items.push(
+			{ label: 'ลบ', action: () => { confirmDeleteSelected(); closeContextMenu(); }, danger: true, divider: true }
+		);
+		return items;
 	}
 
 	function clearLongPressTimer() {
@@ -172,6 +196,18 @@
 
 	const colors = $derived(theme.colors);
 	const renderer = $derived(getRenderer(diagram.notation));
+
+	// Badge: entities with issues
+	const orphanIds = $derived(new Set(
+		diagram.entities
+			.filter(e => !diagram.relationships.some(r => r.entityIds.includes(e.id)))
+			.map(e => e.id)
+	));
+	const missingPkIds = $derived(new Set(
+		diagram.entities
+			.filter(e => !e.attributes.some(a => a.type === 'primary_key'))
+			.map(e => e.id)
+	));
 
 	// Compute entity rects
 	const entityRects = $derived(
@@ -330,7 +366,7 @@
 	}
 
 	function handleEntityMouseDown(entityId: string, e: MouseEvent) {
-		if (collab.isViewer || diagram.viewOnly) return;
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		if (e.button === 0) {
 			e.stopPropagation();
 
@@ -348,6 +384,11 @@
 			const ids = diagram.selectedNodeIds;
 			const offsets = new Map<string, { dx: number; dy: number }>();
 			for (const id of ids) {
+				// Skip locked entities (allow select, block drag)
+				if (diagram.diagramType === 'er') {
+					const ent = diagram.entityMap.get(id);
+					if (ent?.isLocked) continue;
+				}
 				const pos = getNodePosition(id);
 				if (pos) {
 					offsets.set(id, {
@@ -364,7 +405,7 @@
 	}
 
 	function handleEntityTouchStart(entityId: string, e: TouchEvent) {
-		if (collab.isViewer || diagram.viewOnly) return;
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		if (e.touches.length !== 1) return;
 		e.stopPropagation();
 
@@ -404,6 +445,11 @@
 		const ids = diagram.selectedNodeIds;
 		const offsets = new Map<string, { dx: number; dy: number }>();
 		for (const id of ids) {
+			// Skip locked entities (allow select, block drag)
+			if (diagram.diagramType === 'er') {
+				const ent = diagram.entityMap.get(id);
+				if (ent?.isLocked) continue;
+			}
 			const pos = getNodePosition(id);
 			if (pos) {
 				offsets.set(id, {
@@ -434,7 +480,7 @@
 	}
 
 	function handleNoteMouseDown(noteId: string, e: MouseEvent) {
-		if (collab.isViewer || diagram.viewOnly) return;
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		if (e.button === 0) {
 			e.stopPropagation();
 			const svgPos = screenToSvg(e.clientX, e.clientY);
@@ -453,6 +499,10 @@
 	// Inline note editing state
 	let editingNoteId = $state<string | null>(null);
 	let editingNoteText = $state('');
+
+	// Inline entity name editing state
+	let editingEntityId = $state<string | null>(null);
+	let editingEntityName = $state('');
 
 	function handleNoteDblClick(noteId: string) {
 		if (collab.isViewer || diagram.viewOnly) return;
@@ -475,8 +525,30 @@
 		editingNoteText = '';
 	}
 
+	function handleEntityDblClick(entityId: string) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const entity = diagram.entities.find((e) => e.id === entityId);
+		if (!entity) return;
+		editingEntityId = entityId;
+		editingEntityName = entity.name;
+	}
+
+	function commitEntityEdit() {
+		if (editingEntityId && editingEntityName.trim() !== '') {
+			diagram.updateEntity(editingEntityId, { name: editingEntityName.trim() });
+		}
+		editingEntityId = null;
+		editingEntityName = '';
+	}
+
+	function cancelEntityEdit() {
+		editingEntityId = null;
+		editingEntityName = '';
+	}
+
 	function handleCanvasMouseDown(e: MouseEvent) {
 		closeContextMenu();
+		if (presentation.active) return; // Block all canvas interaction during presentation
 		if (diagram.viewOnly) {
 			// Allow panning in view-only mode
 			if (e.button === 0) {
@@ -535,10 +607,57 @@
 						svgPos = { x: dragging.startX, y: svgPos.y };
 					}
 				}
+
+				// Snap alignment guides
+				const SNAP_THRESHOLD = 5;
+				const guides: typeof alignGuides = [];
+				let snapDx = 0;
+				let snapDy = 0;
+
+				if (dragging.offsets.size === 1 && diagram.diagramType === 'er') {
+					const [dragId] = dragging.offsets.keys();
+					const off = dragging.offsets.get(dragId)!;
+					const draggedRect = entityRects.get(dragId);
+					if (draggedRect) {
+						const newX = svgPos.x - off.dx;
+						const newY = svgPos.y - off.dy;
+						const dCx = newX + draggedRect.width / 2;
+						const dCy = newY + draggedRect.height / 2;
+						const dEdges = { l: newX, r: newX + draggedRect.width, t: newY, b: newY + draggedRect.height, cx: dCx, cy: dCy };
+
+						for (const [eid, eRect] of entityRects) {
+							if (eid === dragId) continue;
+							const oEdges = { l: eRect.x, r: eRect.x + eRect.width, t: eRect.y, b: eRect.y + eRect.height, cx: eRect.x + eRect.width / 2, cy: eRect.y + eRect.height / 2 };
+
+							// Vertical (x-axis) alignment
+							for (const [dv, ov] of [[dEdges.l, oEdges.l], [dEdges.r, oEdges.r], [dEdges.cx, oEdges.cx], [dEdges.l, oEdges.r], [dEdges.r, oEdges.l]]) {
+								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
+									snapDx = ov - dv;
+									const minY = Math.min(dEdges.t, oEdges.t);
+									const maxY = Math.max(dEdges.b, oEdges.b);
+									guides.push({ axis: 'x', pos: ov, from: minY, to: maxY });
+								}
+							}
+
+							// Horizontal (y-axis) alignment
+							for (const [dv, ov] of [[dEdges.t, oEdges.t], [dEdges.b, oEdges.b], [dEdges.cy, oEdges.cy], [dEdges.t, oEdges.b], [dEdges.b, oEdges.t]]) {
+								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
+									snapDy = ov - dv;
+									const minX = Math.min(dEdges.l, oEdges.l);
+									const maxX = Math.max(dEdges.r, oEdges.r);
+									guides.push({ axis: 'y', pos: ov, from: minX, to: maxX });
+								}
+							}
+						}
+					}
+				}
+
+				alignGuides = guides;
+
 				for (const [id, off] of dragging.offsets) {
 					moveNode(id, {
-						x: svgPos.x - off.dx,
-						y: svgPos.y - off.dy
+						x: svgPos.x - off.dx + snapDx,
+						y: svgPos.y - off.dy + snapDy
 					});
 				}
 			} else if (panning) {
@@ -580,6 +699,7 @@
 			dragging = null;
 			draggingNote = null;
 			panning = null;
+			alignGuides = [];
 		} else if (e.button === 2 && selecting) {
 			// Finish marquee selection
 			const screenDist = Math.hypot(e.clientX - selecting.screenX, e.clientY - selecting.screenY);
@@ -607,6 +727,7 @@
 	}
 
 	function handleWheel(e: WheelEvent) {
+		if (presentation.active) return;
 		e.preventDefault();
 		if (collab.isViewer && !diagram.viewOnly) return;
 		const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -615,6 +736,7 @@
 
 	// Touch handlers
 	function handleTouchStart(e: TouchEvent) {
+		if (presentation.active) return;
 		// Send first touch as cursor for collab
 		if (collab.connected && e.touches.length >= 1) {
 			const t = e.touches[0];
@@ -656,8 +778,12 @@
 	}
 
 	function handleTouchMove(e: TouchEvent) {
-		// Cancel long-press if finger moves too much
-		if (longPressStartPos && e.touches.length >= 1) {
+		if (presentation.active) return;
+		// Cancel long-press on any movement during drag (prevents context menu while dragging)
+		if (longPressTimer && touchState?.type === 'drag') {
+			clearLongPressTimer();
+		} else if (longPressStartPos && e.touches.length >= 1) {
+			// For non-drag touches, use distance threshold
 			const t = e.touches[0];
 			const dist = Math.hypot(t.clientX - longPressStartPos.x, t.clientY - longPressStartPos.y);
 			if (dist > LONG_PRESS_MOVE_THRESHOLD) {
@@ -718,6 +844,7 @@
 	}
 
 	function handleTouchEnd(_e: TouchEvent) {
+		if (presentation.active) return;
 		clearLongPressTimer();
 		touchState = null;
 		// Clear cursor when finger lifts
@@ -733,7 +860,7 @@
 	export function fitToContent() {
 		if (!svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
-		diagram.fitToContent(rect.width, rect.height);
+		diagram.smoothFitToContent(rect.width, rect.height);
 	}
 </script>
 
@@ -743,6 +870,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <svg
 	bind:this={svgEl}
+	data-onboarding="canvas"
 	class="w-full h-full touch-canvas"
 	xmlns="http://www.w3.org/2000/svg"
 	role="img"
@@ -751,16 +879,19 @@
 	onmousemove={handleCursorMove}
 	onmouseleave={handleCursorLeave}
 	oncontextmenu={(e) => e.preventDefault()}
-	style="background: {colors.canvasBg}; cursor: {dragging || draggingNote ? 'grabbing' : panning ? 'move' : selecting ? 'crosshair' : 'default'}; touch-action: none;"
+	style="background: {colors.canvasBg}; cursor: {dragging || draggingNote ? 'grabbing' : panning ? 'move' : selecting ? 'crosshair' : 'default'}; touch-action: {presentation.active ? 'auto' : 'none'}; {presentation.active ? 'pointer-events: none;' : ''}"
 >
 	<!-- Defs: grid patterns + arrow markers -->
 	<defs>
-		<pattern id="grid-small" width="20" height="20" patternUnits="userSpaceOnUse">
-			<path d="M 20 0 L 0 0 0 20" fill="none" stroke={colors.gridColor} stroke-width="0.5" />
+		<pattern id="grid-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+			<circle cx="10" cy="10" r="0.8" fill={colors.gridColorDark} />
 		</pattern>
 		<pattern id="grid-large" width="100" height="100" patternUnits="userSpaceOnUse">
-			<rect width="100" height="100" fill="url(#grid-small)" />
-			<path d="M 100 0 L 0 0 0 100" fill="none" stroke={colors.gridColorDark} stroke-width="1" />
+			<rect width="100" height="100" fill="url(#grid-dots)" />
+			<circle cx="0" cy="0" r="1.5" fill={colors.gridColorDark} />
+			<circle cx="100" cy="0" r="1.5" fill={colors.gridColorDark} />
+			<circle cx="0" cy="100" r="1.5" fill={colors.gridColorDark} />
+			<circle cx="100" cy="100" r="1.5" fill={colors.gridColorDark} />
 		</pattern>
 
 		<!-- Arrow markers -->
@@ -796,7 +927,7 @@
 	<rect class="canvas-bg" width="100%" height="100%" fill={diagram.showGrid ? 'url(#grid-large)' : colors.canvasBg} />
 
 	<!-- Transform group for pan/zoom -->
-	<g transform="translate({diagram.panX}, {diagram.panY}) scale({diagram.zoom})" font-family={diagram.diagramFont} style="will-change: transform;">
+	<g transform="translate({diagram.panX}, {diagram.panY}) scale({diagram.zoom})" font-family={diagram.diagramFont} style="will-change: transform;{diagram.smoothTransition ? ' transition: transform 0.3s ease-out;' : ''}">
 		{#if diagram.diagramType === 'er'}
 			<!-- Relationships (drawn first, under entities) -->
 			{#each visibleRelData as data}
@@ -807,7 +938,9 @@
 						toPoint={data.toPoint}
 						{renderer}
 						selected={diagram.selectedEdgeId === data.relationship.id}
+						highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
+						animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id)}
 					/>
 				{:else}
 					<RelationshipEdge
@@ -819,7 +952,10 @@
 						{renderer}
 						notation={diagram.notation}
 						selected={diagram.selectedEdgeId === data.relationship.id}
+						highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
+						dimmed={diagram.focusMode && diagram.focusedRelIds != null && !diagram.focusedRelIds.has(data.relationship.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
+						animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id)}
 					/>
 				{/if}
 			{/each}
@@ -853,12 +989,84 @@
 						{rect}
 						{renderer}
 						selected={diagram.selectedNodeIds.includes(entity.id)}
+						highlighted={highlight.active && highlight.entityIds.has(entity.id)}
+						missingPk={missingPkIds.has(entity.id)}
+						isOrphan={orphanIds.has(entity.id)}
+						dimmed={diagram.focusMode && diagram.focusedEntityIds != null && !diagram.focusedEntityIds.has(entity.id)}
 						onmousedown={(e) => handleEntityMouseDown(entity.id, e)}
 						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(entity.id); }}
 						ontouchstart={(e) => handleEntityTouchStart(entity.id, e)}
 						oncontextmenu={(e) => handleEntityContextMenu(entity.id, e)}
+						ondblclick={() => handleEntityDblClick(entity.id)}
+						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(entity.id)) || diagram.newEntityIds.has(entity.id)}
 					/>
+					<!-- Inline entity name editing -->
+					{#if editingEntityId === entity.id}
+						<foreignObject
+							x={rect.x + 2}
+							y={rect.y + 2}
+							width={rect.width - 4}
+							height={renderer.headerHeight - 4}
+						>
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								autofocus
+								type="text"
+								style="
+									width: 100%;
+									height: 100%;
+									border: 1px solid #3b82f6;
+									outline: none;
+									background: {colors.entityFill};
+									color: {colors.entityHeaderText};
+									font-size: 14px;
+									font-weight: 700;
+									font-family: {diagram.diagramFont};
+									text-align: center;
+									padding: 0 4px;
+									box-sizing: border-box;
+									border-radius: 2px;
+								"
+								bind:value={editingEntityName}
+								onblur={commitEntityEdit}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') { e.preventDefault(); commitEntityEdit(); }
+									if (e.key === 'Escape') { cancelEntityEdit(); }
+									e.stopPropagation();
+								}}
+								onmousedown={(e) => e.stopPropagation()}
+								ondblclick={(e) => e.stopPropagation()}
+							/>
+						</foreignObject>
+					{/if}
 				{/if}
+			{/each}
+
+			<!-- Dying entities (fade-out ghosts) -->
+			{#each diagram.dyingEntities as entity (entity.id)}
+				{@const rect = entity._dyingRect ?? { x: entity.position.x, y: entity.position.y, width: 160, height: 80 }}
+				<g class="dying-entity" style="transform-origin: {rect.x + rect.width / 2}px {rect.y + rect.height / 2}px;">
+					<rect
+						x={rect.x}
+						y={rect.y}
+						width={rect.width}
+						height={rect.height}
+						fill={entity.color || colors.entityFill}
+						stroke={colors.entityStroke}
+						stroke-width="1.5"
+						opacity="0.5"
+					/>
+					<text
+						x={rect.x + rect.width / 2}
+						y={rect.y + rect.height / 2}
+						text-anchor="middle"
+						dominant-baseline="central"
+						fill={colors.entityHeaderText}
+						font-size="14"
+						font-weight="700"
+						opacity="0.5"
+					>{entity.name}</text>
+				</g>
 			{/each}
 
 		{:else if diagram.diagramType === 'flowchart'}
@@ -886,6 +1094,7 @@
 					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
 					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 				/>
 			{/each}
 
@@ -914,6 +1123,7 @@
 					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
 					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 				/>
 			{/each}
 		{/if}
@@ -1010,6 +1220,20 @@
 			</g>
 		{/each}
 
+		<!-- Snap alignment guides -->
+		{#each alignGuides as guide}
+			<line
+				x1={guide.axis === 'x' ? guide.pos : guide.from}
+				y1={guide.axis === 'y' ? guide.pos : guide.from}
+				x2={guide.axis === 'x' ? guide.pos : guide.to}
+				y2={guide.axis === 'y' ? guide.pos : guide.to}
+				stroke="#3b82f6"
+				stroke-width={1 / diagram.zoom}
+				stroke-dasharray="4 4"
+				opacity="0.8"
+			/>
+		{/each}
+
 		<!-- Marquee selection rectangle -->
 		{#if marqueeRect && marqueeRect.width > 2}
 			<rect
@@ -1040,23 +1264,50 @@
 	{#if (diagram.diagramType === 'er' && diagram.entities.length === 0) ||
 		(diagram.diagramType === 'flowchart' && diagram.flowNodes.length === 0) ||
 		(diagram.diagramType === 'context' && diagram.dfdNodes.length === 0)}
-		<text
-			x="50%"
-			y="50%"
-			text-anchor="middle"
-			dominant-baseline="central"
-			font-size="16"
-			fill={colors.attrText}
-			font-family="'Kanit', sans-serif"
-		>
-			{#if diagram.diagramType === 'er'}
-				{isMobile ? 'กดปุ่ม ☰ เพื่อเพิ่ม Entity' : 'เพิ่ม Entity จากแผงฟอร์มด้านซ้ายเพื่อเริ่มสร้าง ER Diagram'}
-			{:else if diagram.diagramType === 'flowchart'}
-				{isMobile ? 'กดปุ่ม ☰ เพื่อเพิ่ม Node' : 'เพิ่ม Node จากแผงฟอร์มด้านซ้ายเพื่อเริ่มสร้าง Flowchart'}
-			{:else}
-				{isMobile ? 'กดปุ่ม ☰ เพื่อเพิ่ม Node' : 'เพิ่ม Node จากแผงฟอร์มด้านซ้ายเพื่อเริ่มสร้าง Context Diagram'}
+		<g transform="translate({diagram.canvasWidth / 2}, {diagram.canvasHeight / 2})">
+			<!-- Icon -->
+			<g transform="translate(-20, -48)" opacity="0.3">
+				<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={colors.attrText}>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+				</svg>
+			</g>
+			<!-- Title -->
+			<text
+				y="12"
+				text-anchor="middle"
+				font-size="16"
+				fill={colors.attrText}
+				opacity="0.6"
+				font-family="'Kanit', sans-serif"
+			>
+				{#if diagram.diagramType === 'er'}
+					{isMobile ? i18n.t('canvas.empty.er.title') : i18n.t('canvas.empty.er.title')}
+				{:else if diagram.diagramType === 'flowchart'}
+					{isMobile ? i18n.t('canvas.empty.flow.title') : i18n.t('canvas.empty.flow.title')}
+				{:else}
+					{isMobile ? i18n.t('canvas.empty.dfd.title') : i18n.t('canvas.empty.dfd.title')}
+				{/if}
+			</text>
+			<!-- Description -->
+			{#if !isMobile}
+				<text
+					y="34"
+					text-anchor="middle"
+					font-size="13"
+					fill={colors.attrText}
+					opacity="0.4"
+					font-family="'Kanit', sans-serif"
+				>
+					{#if diagram.diagramType === 'er'}
+						{i18n.t('canvas.empty.er.desc')}
+					{:else if diagram.diagramType === 'flowchart'}
+						{i18n.t('canvas.empty.flow.desc')}
+					{:else}
+						{i18n.t('canvas.empty.dfd.desc')}
+					{/if}
+				</text>
 			{/if}
-		</text>
+		</g>
 	{/if}
 </svg>
 
@@ -1069,3 +1320,14 @@
 		onclose={closeContextMenu}
 	/>
 {/if}
+
+<style>
+	@keyframes entityDie {
+		from { opacity: 0.5; transform: scale(1); }
+		to { opacity: 0; transform: scale(0.8); }
+	}
+	.dying-entity {
+		animation: entityDie 0.3s ease-in forwards;
+		pointer-events: none;
+	}
+</style>

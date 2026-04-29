@@ -1,0 +1,134 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	--font-sans: 'Kanit', system-ui, -apple-system, sans-serif;
+
+	/* Light theme UI vars */
+	--ui-bg: #ffffff;
+	--ui-bg-secondary: #f5f5f5;
+	--ui-bg-tertiary: #e5e5e5;
+	--ui-border: #d4d4d4;
+	--ui-border-light: #e5e5e5;
+	--ui-text: #171717;
+	--ui-text-secondary: #525252;
+	--ui-text-muted: #737373;
+	--ui-text-placeholder: #a3a3a3;
+	--ui-hover: #f5f5f5;
+	--ui-accent: #171717;
+	--ui-accent-text: #ffffff;
+}
+
+.dark {
+	--ui-bg: #0a0a0a;
+	--ui-bg-secondary: #171717;
+	--ui-bg-tertiary: #262626;
+	--ui-border: #404040;
+	--ui-border-light: #303030;
+	--ui-text: #e5e5e5;
+	--ui-text-secondary: #a3a3a3;
+	--ui-text-muted: #737373;
+	--ui-text-placeholder: #525252;
+	--ui-hover: #262626;
+	--ui-accent: #e5e5e5;
+	--ui-accent-text: #171717;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	font-family: var(--font-sans);
+	font-weight: 300;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	background: var(--ui-bg);
+	color: var(--ui-text);
+	transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Smooth theme transition on UI elements (exclude SVG to avoid drag lag) */
+body, aside, div, nav, header, footer, main, section,
+button, input, select, textarea, span, p, h1, h2, h3, h4, h5, h6, a, label {
+	transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* SVG text rendering */
+svg text {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Entity node grab cursor when dragging */
+.entity-node:active {
+	cursor: grabbing;
+}
+
+/* Remove focus outline on SVG interactive elements */
+svg [role="button"]:focus,
+svg [role="button"]:focus-visible {
+	outline: none;
+}
+
+/* Hide all scrollbars globally */
+*::-webkit-scrollbar {
+	display: none;
+}
+
+* {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+/* Mobile bottom sheet animation */
+.mobile-panel {
+	transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mobile-panel.closed {
+	transform: translateY(100%);
+}
+
+/* Sidebar smooth collapse transition */
+.sidebar-transition {
+	width: 280px;
+	min-width: 280px;
+	transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	overflow: hidden;
+}
+
+@media (min-width: 1280px) {
+	.sidebar-transition {
+		width: 380px;
+		min-width: 380px;
+	}
+}
+
+/* Modal/panel entrance animations */
+@keyframes fadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+@keyframes slideUp {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+	from { opacity: 0; transform: scale(0.96); }
+	to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in { animation: fadeIn 0.15s ease-out; }
+.animate-slide-up { animation: slideUp 0.2s ease-out; }
+.animate-scale-in { animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+@keyframes panelSlideIn {
+	from { opacity: 0; transform: translateX(100%); }
+	to { opacity: 1; transform: translateX(0); }
+}
+.panel-slide-in { animation: panelSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Touch action for SVG canvas */
+svg.touch-canvas {
+	touch-action: none;
+}

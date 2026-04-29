@@ -5,6 +5,7 @@
 	let {
 		node,
 		selected = false,
+		animateIn = false,
 		onmousedown,
 		onclick,
 		ontouchstart,
@@ -12,6 +13,7 @@
 	}: {
 		node: DFDNode;
 		selected?: boolean;
+		animateIn?: boolean;
 		onmousedown?: (e: MouseEvent) => void;
 		onclick?: (e: MouseEvent) => void;
 		ontouchstart?: (e: TouchEvent) => void;
@@ -28,6 +30,7 @@
 <g
 	class="dfd-node"
 	class:selected
+	class:animate-in={animateIn}
 	role="button"
 	tabindex="0"
 	aria-label="DFD node: {node.name}"
@@ -140,3 +143,17 @@
 		</text>
 	{/if}
 </g>
+
+<style>
+	@keyframes nodeAppear {
+		from { opacity: 0; transform: scale(0.8); }
+		to { opacity: 1; transform: scale(1); }
+	}
+	.dfd-node.animate-in {
+		animation: nodeAppear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+		transform-origin: center;
+		transform-box: fill-box;
+	}
+	.dfd-node { transition: filter 0.15s ease; }
+	.dfd-node:hover { filter: drop-shadow(0 0 4px rgba(59,130,246,0.2)); }
+</style>
