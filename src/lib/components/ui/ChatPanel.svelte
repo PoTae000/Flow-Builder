@@ -48,12 +48,36 @@
 	const isCollab = $derived(collab.connected && collab.users.length > 0);
 	const messages = $derived<ChatMessage[]>(isCollab ? collab.chatMessages : localMessages);
 
-	const suggestions = [
-		'Diagram นี้ Normalize ถูกมั้ย?',
-		'ควรเพิ่ม Entity อะไรอีก?',
-		'Cardinality ถูกต้องมั้ย?',
-		'ออกแบบระบบจองโรงแรมให้หน่อย'
-	];
+	const diagramTypeLabel = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return 'Flowchart';
+		if (diagram.diagramType === 'context') return 'DFD';
+		return 'ER Diagram';
+	});
+
+	const suggestions = $derived(() => {
+		if (diagram.diagramType === 'flowchart') {
+			return [
+				'Flow นี้ถูกต้องมั้ย?',
+				'มี Dead End มั้ย?',
+				'Decision Node ครบมั้ย?',
+				'ออกแบบ Login Process ให้หน่อย'
+			];
+		} else if (diagram.diagramType === 'context') {
+			return [
+				'Data Flow สมดุลมั้ย?',
+				'External Entity ครบมั้ย?',
+				'Process ควรแยกอะไรเพิ่ม?',
+				'ออกแบบระบบ E-commerce ให้หน่อย'
+			];
+		} else {
+			return [
+				'Diagram นี้ Normalize ถูกมั้ย?',
+				'ควรเพิ่ม Entity อะไรอีก?',
+				'Cardinality ถูกต้องมั้ย?',
+				'ออกแบบระบบจองโรงแรมให้หน่อย'
+			];
+		}
+	});
 
 	function myName(): string {
 		return collab.userName || 'Anonymous';
@@ -217,7 +241,7 @@
 			<div class="flex flex-col items-center gap-3 py-8 text-center">
 				<svg class="h-10 w-10 text-[var(--ui-text-muted)] opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
 				<p class="text-xs text-[var(--ui-text-muted)]">
-					{isCollab ? 'แชทร่วมกับทุกคนในห้อง' : 'ถามอะไรก็ได้เกี่ยวกับ ER Diagram'}
+					{isCollab ? 'แชทร่วมกับทุกคนในห้อง' : `ถามอะไรก็ได้เกี่ยวกับ ${diagramTypeLabel}`}
 				</p>
 				<div class="flex flex-wrap justify-center gap-1.5">
 					{#each suggestions as s}

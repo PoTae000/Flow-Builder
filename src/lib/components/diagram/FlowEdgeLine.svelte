@@ -148,29 +148,7 @@
 		marker-end="url(#flow-arrow)"
 	/>
 
-	<!-- Condition badge (Yes/No) -->
-	{#if edge.condition}
-		{@const text = edge.condition === 'yes' ? 'Yes' : 'No'}
-		<rect
-			x={badgePos.x - 14}
-			y={badgePos.y - 9}
-			width={28}
-			height={18}
-			rx="3"
-			fill={colors.entityFill}
-		/>
-		<text
-			x={badgePos.x}
-			y={badgePos.y}
-			text-anchor="middle"
-			dominant-baseline="central"
-			fill={colors.relationshipText}
-			font-size="10"
-			font-weight="600"
-		>
-			{text}
-		</text>
-	{/if}
+	<!-- Condition badge removed per user request -->
 
 	<!-- Label -->
 	{#if edge.label}
