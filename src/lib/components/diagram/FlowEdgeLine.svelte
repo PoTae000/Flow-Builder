@@ -115,30 +115,30 @@
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Create orthogonal path ensuring arrow points in correct direction
-		// The last segment must be aligned with toSide for proper arrow orientation
+		// Create orthogonal path with offset maintained throughout
+		// Offset keeps parallel edges separated in the middle segments
 		if ((fromSide === 'left' || fromSide === 'right') && (toSide === 'top' || toSide === 'bottom')) {
 			// Exit horizontally, enter vertically
-			// Last segment must be vertical for arrow to point up/down
+			// Keep offset in the vertical middle segment to prevent overlap
 			const midX = (fp.x + tp.x) / 2 + offset;
 			return [
 				fp,                       // Start
-				{ x: midX, y: fp.y },    // Go horizontal
-				{ x: tp.x, y: fp.y },    // Turn to align with target x
-				tp                        // Go vertical to target (arrow points down/up)
+				{ x: midX, y: fp.y },    // Go horizontal (with offset)
+				{ x: midX, y: tp.y },    // Go vertical (keeping offset) - parallel edges separated here
+				tp                        // Final turn to target
 			];
 		} else if ((fromSide === 'top' || fromSide === 'bottom') && (toSide === 'left' || toSide === 'right')) {
 			// Exit vertically, enter horizontally
-			// Last segment must be horizontal for arrow to point left/right
+			// Keep offset in the horizontal middle segment to prevent overlap
 			const midY = (fp.y + tp.y) / 2 + offset;
 			return [
 				fp,                       // Start
-				{ x: fp.x, y: midY },    // Go vertical
-				{ x: fp.x, y: tp.y },    // Turn to align with target y
-				tp                        // Go horizontal to target (arrow points left/right)
+				{ x: fp.x, y: midY },    // Go vertical (with offset)
+				{ x: tp.x, y: midY },    // Go horizontal (keeping offset) - parallel edges separated here
+				tp                        // Final turn to target
 			];
 		} else if (fromSide === 'top' || fromSide === 'bottom') {
-			// Both vertical
+			// Both vertical: offset the horizontal middle segment
 			const midY = (fp.y + tp.y) / 2 + offset;
 			return [
 				fp,
@@ -147,7 +147,7 @@
 				tp
 			];
 		} else {
-			// Both horizontal
+			// Both horizontal: offset the vertical middle segment
 			const midX = (fp.x + tp.x) / 2 + offset;
 			return [
 				fp,
