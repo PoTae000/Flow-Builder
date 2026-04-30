@@ -151,22 +151,20 @@
 	<!-- Condition badge (Yes/No) -->
 	{#if edge.condition}
 		{@const text = edge.condition === 'yes' ? 'Yes' : 'No'}
-		{@const badgeFill = edge.condition === 'yes' ? '#059669' : '#dc2626'}
 		<rect
 			x={badgePos.x - 14}
 			y={badgePos.y - 9}
 			width={28}
 			height={18}
-			rx="4"
-			fill={badgeFill}
-			opacity="0.9"
+			rx="3"
+			fill={colors.entityFill}
 		/>
 		<text
 			x={badgePos.x}
 			y={badgePos.y}
 			text-anchor="middle"
 			dominant-baseline="central"
-			fill="white"
+			fill={colors.relationshipText}
 			font-size="10"
 			font-weight="600"
 		>
