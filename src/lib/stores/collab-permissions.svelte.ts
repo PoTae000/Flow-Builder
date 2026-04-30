@@ -2,6 +2,23 @@ import * as Y from 'yjs';
 import type { CollabState, PermissionAction, PermissionRequest } from './collab.svelte';
 
 /**
+ * P2P Permission Voting System
+ *
+ * SECURITY NOTE (M5 — client-enforced permissions):
+ * This permission model is enforced entirely on the client side via Y.js CRDT
+ * state. It provides UX-level access control (preventing accidental actions)
+ * but does NOT protect against adversarial clients. A malicious user who
+ * modifies their client code can bypass all permission checks.
+ *
+ * This is an inherent limitation of P2P architecture — there is no central
+ * authority to enforce permissions. True server-enforced access control would
+ * require a relay server architecture instead of direct WebRTC P2P.
+ *
+ * Accepted risk: The collaboration feature targets trusted teams/classrooms,
+ * not adversarial environments.
+ */
+
+/**
  * Request permission from all other users in the room. Returns true if approved.
  */
 export function requestPermission(collab: CollabState, action: PermissionAction): Promise<boolean> {
@@ -210,7 +227,7 @@ export function syncPermissionState(collab: CollabState, yPerms: Y.Map<unknown>)
 /**
  * Check if voting is complete and resolve accordingly.
  */
-function checkPermissionResult(collab: CollabState, req: PermissionRequest, votes: Map<number, 'approve' | 'deny'>) {
+export function checkPermissionResult(collab: CollabState, req: PermissionRequest, votes: Map<number, 'approve' | 'deny'>) {
 	// Immediately deny if anyone voted deny
 	for (const [, v] of votes) {
 		if (v === 'deny') {

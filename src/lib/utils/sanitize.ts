@@ -11,8 +11,8 @@ export function sanitizeName(raw: string, maxLength = 100): string {
 	s = s.replace(/\/\*/g, '');
 	s = s.replace(/\*\//g, '');
 
-	// Remove dangerous characters: ; ' " ` \ [ ]
-	s = s.replace(/[;'"\\`[\]]/g, '');
+	// Remove dangerous characters: ; ' " ` \ [ ] < > ( ) { } | & = #
+	s = s.replace(/[;'"\\`[\]<>(){}|&=#]/g, '');
 
 	// Remove control characters (U+0000–U+001F, U+007F)
 	s = s.replace(/[\x00-\x1f\x7f]/g, '');

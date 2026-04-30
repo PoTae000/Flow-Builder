@@ -107,7 +107,7 @@
 			let reply = 'ขอโทษ ตอบไม่ได้ตอนนี้ ลองใหม่นะ';
 			if (res.ok) {
 				try {
-					const data = await res.json();
+					const data: any = await res.json();
 					reply = data.content || reply;
 				} catch {
 					reply = 'AI ส่งข้อมูลกลับมาไม่ถูกต้อง ลองใหม่นะ';
@@ -247,10 +247,17 @@
 
 		{#if loading}
 			<div class="mb-3">
-				<div class="inline-flex items-center gap-1 rounded-2xl rounded-bl-md border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2">
-					<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 0ms"></span>
-					<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 150ms"></span>
-					<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 300ms"></span>
+				<div class="max-w-[90%] rounded-2xl rounded-bl-md border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2">
+					<div class="flex items-center gap-1 mb-2">
+						<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 0ms"></span>
+						<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 150ms"></span>
+						<span class="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--ui-text-muted)]" style="animation-delay: 300ms"></span>
+					</div>
+					<div class="flex flex-col gap-1.5">
+						<div class="skeleton h-3 w-full"></div>
+						<div class="skeleton h-3 w-4/5"></div>
+						<div class="skeleton h-3 w-3/5"></div>
+					</div>
 				</div>
 			</div>
 		{/if}

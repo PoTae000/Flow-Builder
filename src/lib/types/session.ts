@@ -12,6 +12,13 @@ export interface DiagramMeta {
 	updatedAt: number;
 }
 
+export interface ViewBookmark {
+	slot: number;
+	panX: number;
+	panY: number;
+	zoom: number;
+}
+
 export interface DiagramData {
 	entities: Entity[];
 	relationships: Relationship[];
@@ -26,6 +33,7 @@ export interface DiagramData {
 	flowEdges?: FlowEdge[];
 	dfdNodes?: DFDNode[];
 	dfdFlows?: DFDFlow[];
+	bookmarks?: ViewBookmark[];
 }
 
 export interface UserProfile {

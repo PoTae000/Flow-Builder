@@ -14,14 +14,86 @@
 	import ChenDiamond from './ChenDiamond.svelte';
 	import ChenAttributeOval from './ChenAttributeOval.svelte';
 	import FlowNodeShape from './FlowNodeShape.svelte';
+	import FlowConnectionHandles from './FlowConnectionHandles.svelte';
 	import FlowEdgeLine from './FlowEdgeLine.svelte';
 	import DFDNodeShape from './DFDNodeShape.svelte';
 	import DFDFlowLine from './DFDFlowLine.svelte';
 	import RemoteCursor from './RemoteCursor.svelte';
 	import ContextMenu from '../ui/ContextMenu.svelte';
 	import { i18n } from '$lib/i18n';
+	import type { FlowEdge } from '$lib/types/flowchart';
+	import type { DFDFlow } from '$lib/types/context-diagram';
 
 	let svgEl: SVGSVGElement | undefined = $state();
+
+	// Calculate edge offsets to prevent overlapping (for Flowchart)
+	const flowEdgeOffsets = $derived.by(() => {
+		const offsets = new Map<string, number>();
+		const groups = new Map<string, FlowEdge[]>();
+
+		// Group edges by from-to pair (bidirectional)
+		for (const edge of diagram.flowEdges) {
+			const key1 = `${edge.fromNodeId}→${edge.toNodeId}`;
+			const key2 = `${edge.toNodeId}→${edge.fromNodeId}`;
+
+			// Use consistent key (alphabetically sorted)
+			const key = key1 < key2 ? key1 : key2;
+
+			if (!groups.has(key)) groups.set(key, []);
+			groups.get(key)!.push(edge);
+		}
+
+		// Assign offsets to parallel edges
+		const OFFSET_STEP = 12; // pixels to offset each parallel edge
+		for (const [_key, edges] of groups) {
+			if (edges.length === 1) {
+				offsets.set(edges[0].id, 0); // Single edge, no offset
+			} else {
+				// Multiple parallel edges - spread them out
+				const half = Math.floor(edges.length / 2);
+				edges.forEach((edge, i) => {
+					const offset = (i - half) * OFFSET_STEP;
+					offsets.set(edge.id, offset);
+				});
+			}
+		}
+
+		return offsets;
+	});
+
+	// Calculate flow offsets to prevent overlapping (for DFD)
+	const dfdFlowOffsets = $derived.by(() => {
+		const offsets = new Map<string, number>();
+		const groups = new Map<string, DFDFlow[]>();
+
+		// Group flows by from-to pair (bidirectional)
+		for (const flow of diagram.dfdFlows) {
+			const key1 = `${flow.fromNodeId}→${flow.toNodeId}`;
+			const key2 = `${flow.toNodeId}→${flow.fromNodeId}`;
+
+			// Use consistent key (alphabetically sorted)
+			const key = key1 < key2 ? key1 : key2;
+
+			if (!groups.has(key)) groups.set(key, []);
+			groups.get(key)!.push(flow);
+		}
+
+		// Assign offsets to parallel flows
+		const OFFSET_STEP = 12;
+		for (const [_key, flows] of groups) {
+			if (flows.length === 1) {
+				offsets.set(flows[0].id, 0);
+			} else {
+				const half = Math.floor(flows.length / 2);
+				flows.forEach((flow, i) => {
+					const offset = (i - half) * OFFSET_STEP;
+					offsets.set(flow.id, offset);
+				});
+			}
+		}
+
+		return offsets;
+	});
 
 	// A4: Responsive empty state
 	let isMobile = $state(false);
@@ -77,6 +149,11 @@
 	let draggingNote = $state<{ noteId: string; dx: number; dy: number } | null>(null);
 	let panning = $state<{ startX: number; startY: number; panStartX: number; panStartY: number } | null>(null);
 
+	// Connection drag state (for drag-to-connect edges)
+	let draggingConnection = $state<{ fromNodeId: string; fromSide: 'top' | 'right' | 'bottom' | 'left'; currentX: number; currentY: number } | null>(null);
+	let hoveredNodeId = $state<string | null>(null);
+	let hoveredFlowNodeId = $state<string | null>(null); // For showing connection handles on hover
+
 	// Marquee selection state
 	let selecting = $state<{ startX: number; startY: number; screenX: number; screenY: number } | null>(null);
 	let selectCurrent = $state({ x: 0, y: 0 });
@@ -96,9 +173,6 @@
 	// Context menu state
 	let contextMenu = $state<{ x: number; y: number } | null>(null);
 
-	// Snap alignment guides
-	let alignGuides = $state<{ axis: 'x' | 'y'; pos: number; from: number; to: number }[]>([]);
-
 	// Long-press timer for mobile context menu
 	let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 	let longPressStartPos: { x: number; y: number } | null = null;
@@ -114,7 +188,7 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		if (!diagram.selectedNodeIds.includes(nodeId)) {
+		if (!diagram.selectedNodeIdSet.has(nodeId)) {
 			diagram.selectEntity(nodeId);
 		}
 
@@ -134,15 +208,15 @@
 					? `ลบ "${diagram.entities.find(e => e.id === ids[0])?.name}"${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`
 					: `ลบ ${count} เอนทิตี${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`;
 				dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
-					.then(ok => { if (ok) diagram.removeEntities(ids); });
+					.then(ok => { if (ok) diagram.removeEntities(ids); }).catch(() => {});
 			} else if (diagram.diagramType === 'flowchart') {
 				const msg = count === 1 ? `ลบ Node นี้?` : `ลบ ${count} Node?`;
 				dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
-					.then(ok => { if (ok) diagram.removeEntities(ids); });
+					.then(ok => { if (ok) for (const id of ids) diagram.removeFlowNode(id); }).catch(() => {});
 			} else if (diagram.diagramType === 'context') {
 				const msg = count === 1 ? `ลบ Node นี้?` : `ลบ ${count} Node?`;
 				dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
-					.then(ok => { if (ok) diagram.removeEntities(ids); });
+					.then(ok => { if (ok) for (const id of ids) diagram.removeDFDNode(id); }).catch(() => {});
 			}
 		}
 	}
@@ -365,6 +439,17 @@
 		}
 	}
 
+	function handleStartConnection(nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', clientX: number, clientY: number) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const svgPos = screenToSvg(clientX, clientY);
+		draggingConnection = {
+			fromNodeId: nodeId,
+			fromSide: side,
+			currentX: svgPos.x,
+			currentY: svgPos.y
+		};
+	}
+
 	function handleEntityMouseDown(entityId: string, e: MouseEvent) {
 		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		if (e.button === 0) {
@@ -374,7 +459,7 @@
 			if (e.shiftKey) {
 				diagram.toggleEntitySelection(entityId);
 				return;
-			} else if (!diagram.selectedNodeIds.includes(entityId)) {
+			} else if (!diagram.selectedNodeIdSet.has(entityId)) {
 				// Clicking unselected node → select only this one
 				diagram.selectEntity(entityId);
 			}
@@ -436,7 +521,7 @@
 		}
 		lastTapTime = now;
 
-		if (!diagram.selectedNodeIds.includes(entityId)) {
+		if (!diagram.selectedNodeIdSet.has(entityId)) {
 			diagram.selectEntity(entityId);
 		}
 
@@ -608,9 +693,8 @@
 					}
 				}
 
-				// Snap alignment guides
+				// Snap to nearby entities (edge/center alignment)
 				const SNAP_THRESHOLD = 5;
-				const guides: typeof alignGuides = [];
 				let snapDx = 0;
 				let snapDy = 0;
 
@@ -633,9 +717,6 @@
 							for (const [dv, ov] of [[dEdges.l, oEdges.l], [dEdges.r, oEdges.r], [dEdges.cx, oEdges.cx], [dEdges.l, oEdges.r], [dEdges.r, oEdges.l]]) {
 								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
 									snapDx = ov - dv;
-									const minY = Math.min(dEdges.t, oEdges.t);
-									const maxY = Math.max(dEdges.b, oEdges.b);
-									guides.push({ axis: 'x', pos: ov, from: minY, to: maxY });
 								}
 							}
 
@@ -643,22 +724,41 @@
 							for (const [dv, ov] of [[dEdges.t, oEdges.t], [dEdges.b, oEdges.b], [dEdges.cy, oEdges.cy], [dEdges.t, oEdges.b], [dEdges.b, oEdges.t]]) {
 								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
 									snapDy = ov - dv;
-									const minX = Math.min(dEdges.l, oEdges.l);
-									const maxX = Math.max(dEdges.r, oEdges.r);
-									guides.push({ axis: 'y', pos: ov, from: minX, to: maxX });
 								}
 							}
 						}
 					}
 				}
 
-				alignGuides = guides;
-
 				for (const [id, off] of dragging.offsets) {
 					moveNode(id, {
 						x: svgPos.x - off.dx + snapDx,
 						y: svgPos.y - off.dy + snapDy
 					});
+				}
+			} else if (draggingConnection) {
+				const svgPos = screenToSvg(e.clientX, e.clientY);
+				draggingConnection.currentX = svgPos.x;
+				draggingConnection.currentY = svgPos.y;
+
+				// Check if hovering over a different node
+				hoveredNodeId = null;
+				if (diagram.diagramType === 'flowchart') {
+					for (const node of diagram.flowNodes) {
+						if (node.id === draggingConnection.fromNodeId) continue;
+						const { position } = node;
+						const W = 140;
+						const H = 60;
+						if (
+							svgPos.x >= position.x - W / 2 &&
+							svgPos.x <= position.x + W / 2 &&
+							svgPos.y >= position.y - H / 2 &&
+							svgPos.y <= position.y + H / 2
+						) {
+							hoveredNodeId = node.id;
+							break;
+						}
+					}
 				}
 			} else if (panning) {
 				diagram.setPan(
@@ -696,10 +796,15 @@
 
 	function handleMouseUp(e: MouseEvent) {
 		if (e.button === 0) {
+			// Handle connection drop
+			if (draggingConnection && hoveredNodeId && diagram.diagramType === 'flowchart') {
+				diagram.addFlowEdge('', draggingConnection.fromNodeId, hoveredNodeId);
+			}
 			dragging = null;
 			draggingNote = null;
 			panning = null;
-			alignGuides = [];
+			draggingConnection = null;
+			hoveredNodeId = null;
 		} else if (e.button === 2 && selecting) {
 			// Finish marquee selection
 			const screenDist = Math.hypot(e.clientX - selecting.screenX, e.clientY - selecting.screenY);
@@ -921,6 +1026,15 @@
 			markerWidth="6" markerHeight="6" orient="auto-start-reverse">
 			<path d="M 0 1 L 10 5 L 0 9" fill={colors.relationshipStroke} />
 		</marker>
+		<!-- Temporary connection arrows -->
+		<marker id="arrow-temp" viewBox="0 0 10 10" refX="10" refY="5"
+			markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+			<path d="M 0 1 L 10 5 L 0 9" fill="#3b82f6" />
+		</marker>
+		<marker id="arrow-temp-valid" viewBox="0 0 10 10" refX="10" refY="5"
+			markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+			<path d="M 0 1 L 10 5 L 0 9" fill="#10b981" />
+		</marker>
 	</defs>
 
 	<!-- Background grid -->
@@ -988,7 +1102,7 @@
 						{entity}
 						{rect}
 						{renderer}
-						selected={diagram.selectedNodeIds.includes(entity.id)}
+						selected={diagram.selectedNodeIdSet.has(entity.id)}
 						highlighted={highlight.active && highlight.entityIds.has(entity.id)}
 						missingPk={missingPkIds.has(entity.id)}
 						isOrphan={orphanIds.has(entity.id)}
@@ -999,6 +1113,7 @@
 						oncontextmenu={(e) => handleEntityContextMenu(entity.id, e)}
 						ondblclick={() => handleEntityDblClick(entity.id)}
 						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(entity.id)) || diagram.newEntityIds.has(entity.id)}
+						dragging={dragging != null && dragging.offsets.has(entity.id)}
 					/>
 					<!-- Inline entity name editing -->
 					{#if editingEntityId === entity.id}
@@ -1079,6 +1194,7 @@
 						{edge}
 						{fromNode}
 						{toNode}
+						offset={flowEdgeOffsets.get(edge.id) ?? 0}
 						selected={diagram.selectedEdgeId === edge.id}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(edge.id); }}
 					/>
@@ -1087,16 +1203,54 @@
 
 			<!-- Flowchart nodes -->
 			{#each diagram.flowNodes as node (node.id)}
-				<FlowNodeShape
-					{node}
-					selected={diagram.selectedNodeIds.includes(node.id)}
-					onmousedown={(e) => handleEntityMouseDown(node.id, e)}
-					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
-					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
-					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
-					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
-				/>
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<g
+					onmouseenter={() => hoveredFlowNodeId = node.id}
+					onmouseleave={() => hoveredFlowNodeId = null}
+				>
+					<FlowNodeShape
+						{node}
+						selected={diagram.selectedNodeIdSet.has(node.id)}
+						onmousedown={(e) => handleEntityMouseDown(node.id, e)}
+						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
+						ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
+						oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
+					/>
+
+					<!-- Connection handles (show only on hover) -->
+					{#if hoveredFlowNodeId === node.id && !dragging && !panning && !draggingConnection && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+						<FlowConnectionHandles
+							{node}
+							onStartConnection={handleStartConnection}
+						/>
+					{/if}
+				</g>
 			{/each}
+
+			<!-- Temporary connection line while dragging -->
+			{#if draggingConnection}
+				{@const fromNode = diagram.flowNodes.find(n => n.id === draggingConnection!.fromNodeId)}
+				{#if fromNode}
+					{@const W = 140}
+					{@const H = 60}
+					{@const startPos = draggingConnection!.fromSide === 'top' ? { x: fromNode.position.x, y: fromNode.position.y - H / 2 } :
+						draggingConnection!.fromSide === 'bottom' ? { x: fromNode.position.x, y: fromNode.position.y + H / 2 } :
+						draggingConnection!.fromSide === 'left' ? { x: fromNode.position.x - W / 2, y: fromNode.position.y } :
+						{ x: fromNode.position.x + W / 2, y: fromNode.position.y }}
+					<line
+						x1={startPos.x}
+						y1={startPos.y}
+						x2={draggingConnection!.currentX}
+						y2={draggingConnection!.currentY}
+						stroke={hoveredNodeId ? '#10b981' : '#3b82f6'}
+						stroke-width="2"
+						stroke-dasharray="6 4"
+						opacity="0.7"
+						marker-end={hoveredNodeId ? 'url(#arrow-temp-valid)' : 'url(#arrow-temp)'}
+					/>
+				{/if}
+			{/if}
 
 		{:else if diagram.diagramType === 'context'}
 			<!-- DFD flows -->
@@ -1108,6 +1262,7 @@
 						{flow}
 						{fromNode}
 						{toNode}
+						offset={dfdFlowOffsets.get(flow.id) ?? 0}
 						selected={diagram.selectedEdgeId === flow.id}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
 					/>
@@ -1118,7 +1273,7 @@
 			{#each diagram.dfdNodes as node (node.id)}
 				<DFDNodeShape
 					{node}
-					selected={diagram.selectedNodeIds.includes(node.id)}
+					selected={diagram.selectedNodeIdSet.has(node.id)}
 					onmousedown={(e) => handleEntityMouseDown(node.id, e)}
 					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
@@ -1157,6 +1312,7 @@
 				/>
 					<!-- Delete button (inside the box) -->
 				{#if !diagram.viewOnly}
+					<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 					<g
 						class="note-delete"
 						transform="translate({noteW - 18}, 4)"
@@ -1220,20 +1376,6 @@
 			</g>
 		{/each}
 
-		<!-- Snap alignment guides -->
-		{#each alignGuides as guide}
-			<line
-				x1={guide.axis === 'x' ? guide.pos : guide.from}
-				y1={guide.axis === 'y' ? guide.pos : guide.from}
-				x2={guide.axis === 'x' ? guide.pos : guide.to}
-				y2={guide.axis === 'y' ? guide.pos : guide.to}
-				stroke="#3b82f6"
-				stroke-width={1 / diagram.zoom}
-				stroke-dasharray="4 4"
-				opacity="0.8"
-			/>
-		{/each}
-
 		<!-- Marquee selection rectangle -->
 		{#if marqueeRect && marqueeRect.width > 2}
 			<rect
@@ -1265,6 +1407,7 @@
 		(diagram.diagramType === 'flowchart' && diagram.flowNodes.length === 0) ||
 		(diagram.diagramType === 'context' && diagram.dfdNodes.length === 0)}
 		<g transform="translate({diagram.canvasWidth / 2}, {diagram.canvasHeight / 2})">
+		<g class="empty-state">
 			<!-- Icon -->
 			<g transform="translate(-20, -48)" opacity="0.3">
 				<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={colors.attrText}>
@@ -1308,6 +1451,7 @@
 				</text>
 			{/if}
 		</g>
+		</g>
 	{/if}
 </svg>
 
@@ -1329,5 +1473,12 @@
 	.dying-entity {
 		animation: entityDie 0.3s ease-in forwards;
 		pointer-events: none;
+	}
+	@keyframes emptyStateIn {
+		from { opacity: 0; transform: translate(0, 12px); }
+		to { opacity: 1; transform: translate(0, 0); }
+	}
+	.empty-state {
+		animation: emptyStateIn 0.5s ease-out;
 	}
 </style>

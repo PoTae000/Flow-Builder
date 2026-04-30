@@ -166,11 +166,11 @@
 			});
 
 			if (!res.ok) {
-				const data = await res.json().catch(() => ({}));
+				const data: any = await res.json().catch(() => ({}));
 				throw new Error(data.error || `Error: ${res.status}`);
 			}
 
-			const data = await res.json();
+			const data: any = await res.json();
 			quizTitle = data.title || 'ER Quiz';
 			scenario = data.scenario || '';
 			requirements = data.requirements || [];
@@ -245,11 +245,11 @@
 			});
 
 			if (!res.ok) {
-				const data = await res.json().catch(() => ({}));
+				const data: any = await res.json().catch(() => ({}));
 				throw new Error(data.error || `Error: ${res.status}`);
 			}
 
-			const data = await res.json();
+			const data: any = await res.json();
 			score = data.score || 0;
 			grade = data.grade || '?';
 			feedback = data.feedback || {};
@@ -415,7 +415,7 @@
 
 		<button
 			onclick={() => cardCollapsed = !cardCollapsed}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label={cardCollapsed ? 'Expand' : 'Collapse'}
 		>
 			<svg class="h-4 w-4 transition-transform {cardCollapsed ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -571,7 +571,7 @@
 		</div>
 		<button
 			onclick={handleClose}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label="Close"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

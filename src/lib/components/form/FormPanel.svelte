@@ -126,25 +126,27 @@
 			</button>
 		</div>
 	{:else}
-		<!-- Header -->
-		<div class="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-3">
-			<div class="min-w-0">
-				<h1 class="text-lg font-medium text-[var(--ui-text)] truncate">{headerInfo.title}</h1>
-				<p class="text-xs text-[var(--ui-text-muted)] truncate">{headerInfo.subtitle}</p>
+		<div class="panel-content-fade flex flex-1 flex-col min-h-0">
+			<!-- Header -->
+			<div class="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-3">
+				<div class="min-w-0">
+					<h1 class="text-lg font-medium text-[var(--ui-text)] truncate">{headerInfo.title}</h1>
+					<p class="text-xs text-[var(--ui-text-muted)] truncate">{headerInfo.subtitle}</p>
+				</div>
+				<button
+					class="rounded-lg p-1.5 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] shrink-0"
+					onclick={() => collapsed = true}
+					title="Hide panel"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+				</button>
 			</div>
-			<button
-				class="rounded-lg p-1.5 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] shrink-0"
-				onclick={() => collapsed = true}
-				title="Hide panel"
-			>
-				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-			</button>
-		</div>
 
-		<!-- Scrollable form area -->
-		<div class="flex-1 overflow-y-auto">
-			<div class="flex flex-col gap-5 p-4">
-				{@render formContent()}
+			<!-- Scrollable form area -->
+			<div class="flex-1 overflow-y-auto">
+				<div class="flex flex-col gap-5 p-4">
+					{@render formContent()}
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -157,7 +159,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<aside
 		class="mobile-panel fixed inset-x-0 bottom-0 z-30 flex max-h-[70vh] w-full flex-col rounded-t-2xl border-t border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl lg:hidden"
-		style="transform: translateY({swipeDeltaY}px); transition: {swiping ? 'none' : 'transform 0.2s ease-out'};"
+		style="transform: translateY({swipeDeltaY}px); opacity: {Math.max(0.3, 1 - swipeDeltaY / 200)}; transition: {swiping ? 'none' : 'transform 0.2s ease-out, opacity 0.2s ease-out'};"
 	>
 		<!-- Drag handle -->
 		<div
@@ -191,3 +193,13 @@
 		</div>
 	</aside>
 {/if}
+
+<style>
+	@keyframes panelFadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+	.panel-content-fade {
+		animation: panelFadeIn 0.2s ease-out;
+	}
+</style>

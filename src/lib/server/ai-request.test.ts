@@ -132,7 +132,7 @@ describe('aiRequest', () => {
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get('X-RateLimit-Remaining')).toBe('4');
-			const data = await response.json();
+			const data: any = await response.json();
 			expect(data.score).toBe(85);
 		} finally {
 			globalThis.fetch = originalFetch;
@@ -160,7 +160,7 @@ describe('aiRequest', () => {
 				transformResponse: (text) => ({ code: text, language: 'MySQL' })
 			});
 
-			const data = await response.json();
+			const data: any = await response.json();
 			expect(data.code).toBe('some code here');
 			expect(data.language).toBe('MySQL');
 		} finally {
@@ -188,7 +188,7 @@ describe('aiRequest', () => {
 				jsonMode: false
 			});
 
-			const data = await response.json();
+			const data: any = await response.json();
 			expect(data.content).toBe('Hello, สวัสดี!');
 		} finally {
 			globalThis.fetch = originalFetch;

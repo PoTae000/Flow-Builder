@@ -5,15 +5,10 @@
 
 	let nodeName = $state('');
 	let nodeType = $state<FlowNodeType>('process');
-	let edgeLabel = $state('');
-	let edgeFrom = $state('');
-	let edgeTo = $state('');
-	let edgeCondition = $state<'' | 'yes' | 'no'>('');
 
 	const MAX_NAME = 100;
 
-	const fromNode = $derived(diagram.flowNodes.find(n => n.id === edgeFrom));
-	const isFromDecision = $derived(fromNode?.type === 'decision');
+	const selectedNode = $derived(diagram.flowNodes.find(n => diagram.selectedNodeIdSet.has(n.id)));
 
 	const shapeOptions: { type: FlowNodeType; label: string }[] = [
 		{ type: 'process', label: 'Process' },
@@ -36,16 +31,6 @@
 		if (!name) return;
 		diagram.addFlowNode(name, nodeType);
 		nodeName = '';
-	}
-
-	function addEdge() {
-		if (!edgeFrom || !edgeTo || edgeFrom === edgeTo) return;
-		const cond = isFromDecision && edgeCondition ? edgeCondition : undefined;
-		diagram.addFlowEdge(edgeLabel.trim(), edgeFrom, edgeTo, cond);
-		edgeLabel = '';
-		edgeFrom = '';
-		edgeTo = '';
-		edgeCondition = '';
 	}
 </script>
 
@@ -131,7 +116,7 @@
 		</span>
 		<div class="flex flex-col gap-1.5">
 			{#each diagram.flowNodes as node (node.id)}
-				{@const isSelected = diagram.selectedNodeIds.includes(node.id)}
+				{@const isSelected = diagram.selectedNodeIdSet.has(node.id)}
 				<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 				<div
 					class="flex items-center justify-between rounded-lg border p-2 text-sm transition-all cursor-pointer {isSelected ? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)]' : 'border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] hover:border-[var(--ui-border)]'}"
@@ -155,69 +140,25 @@
 		</div>
 	</div>
 
-	<div class="border-t border-[var(--ui-border)]"></div>
-
-	<!-- Add Edge -->
-	<div class="flex flex-col gap-2">
-		<span class="text-xs font-normal text-[var(--ui-text-muted)] uppercase tracking-wider">เพิ่ม Edge</span>
-		<input
-			type="text"
-			bind:value={edgeLabel}
-			placeholder="Label (optional)..."
-			maxlength={MAX_NAME}
-			class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] hover:border-[var(--ui-text-muted)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
-		/>
-		<div class="flex gap-2">
-			<select
-				bind:value={edgeFrom}
-				class="flex-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-2 py-2 text-sm text-[var(--ui-text)]"
-			>
-				<option value="">From...</option>
-				{#each diagram.flowNodes as node}
-					<option value={node.id}>{node.name}</option>
-				{/each}
-			</select>
-			<span class="flex items-center text-[var(--ui-text-muted)]">&rarr;</span>
-			<select
-				bind:value={edgeTo}
-				class="flex-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-2 py-2 text-sm text-[var(--ui-text)]"
-			>
-				<option value="">To...</option>
-				{#each diagram.flowNodes as node}
-					<option value={node.id}>{node.name}</option>
-				{/each}
-			</select>
-		</div>
-
-		<!-- Condition selector (only when from is Decision) -->
-		{#if isFromDecision}
-			<div class="flex items-center gap-2 animate-slide-up">
-				<span class="text-xs text-[var(--ui-text-muted)]">เงื่อนไข:</span>
-				<div class="flex gap-1">
-					<button
-						onclick={() => edgeCondition = edgeCondition === 'yes' ? '' : 'yes'}
-						class="rounded-md px-3 py-1 text-xs font-medium transition {edgeCondition === 'yes' ? 'bg-emerald-500/20 text-emerald-600 ring-1 ring-emerald-500/40' : 'bg-[var(--ui-bg-secondary)] text-[var(--ui-text-muted)] hover:bg-[var(--ui-bg-tertiary)]'}"
-					>
-						Yes
-					</button>
-					<button
-						onclick={() => edgeCondition = edgeCondition === 'no' ? '' : 'no'}
-						class="rounded-md px-3 py-1 text-xs font-medium transition {edgeCondition === 'no' ? 'bg-red-500/20 text-red-600 ring-1 ring-red-500/40' : 'bg-[var(--ui-bg-secondary)] text-[var(--ui-text-muted)] hover:bg-[var(--ui-bg-tertiary)]'}"
-					>
-						No
-					</button>
-				</div>
+	<!-- Edit Selected Node -->
+	{#if selectedNode && selectedNode.type === 'start-end'}
+		<div class="flex flex-col gap-2 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-3">
+			<span class="text-xs font-semibold text-[var(--ui-text-secondary)] uppercase tracking-wider">ปรับความโค้งมุม</span>
+			<div class="flex items-center gap-3">
+				<input
+					type="range"
+					min="0"
+					max="50"
+					step="1"
+					value={selectedNode.borderRadius ?? 20}
+					oninput={(e) => diagram.updateFlowNode(selectedNode.id, { borderRadius: parseInt(e.currentTarget.value) })}
+					class="flex-1"
+				/>
+				<span class="text-sm font-mono text-[var(--ui-text)]">{selectedNode.borderRadius ?? 20}px</span>
 			</div>
-		{/if}
+		</div>
+	{/if}
 
-		<button
-			onclick={addEdge}
-			disabled={!edgeFrom || !edgeTo || edgeFrom === edgeTo}
-			class="w-full rounded-lg bg-[var(--ui-accent)] px-4 py-2 text-sm font-normal text-[var(--ui-accent-text)] shadow-sm transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			เพิ่ม Edge
-		</button>
-	</div>
 
 	<!-- Edge List -->
 	{#if diagram.flowEdges.length > 0}

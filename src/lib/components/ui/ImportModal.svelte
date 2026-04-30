@@ -33,7 +33,7 @@
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/import/check');
-			const data = await res.json();
+			const data: any = await res.json();
 			aiAvailable = data.available;
 		} catch {
 			aiAvailable = false;
@@ -103,6 +103,12 @@
 			if (data.panX !== undefined) diagram.panX = data.panX;
 			if (data.panY !== undefined) diagram.panY = data.panY;
 			if (data.zoom !== undefined) diagram.zoom = data.zoom;
+			if (data.bookmarks) {
+				diagram.bookmarks.clear();
+				for (const { slot, panX, panY, zoom } of data.bookmarks) {
+					diagram.bookmarks.set(slot, { panX, panY, zoom });
+				}
+			}
 			onclose();
 		} catch {
 			// user cancelled
@@ -125,6 +131,12 @@
 			if (data.panX !== undefined) diagram.panX = data.panX;
 			if (data.panY !== undefined) diagram.panY = data.panY;
 			if (data.zoom !== undefined) diagram.zoom = data.zoom;
+			if (data.bookmarks) {
+				diagram.bookmarks.clear();
+				for (const { slot, panX, panY, zoom } of data.bookmarks) {
+					diagram.bookmarks.set(slot, { panX, panY, zoom });
+				}
+			}
 			onclose();
 		} catch {
 			// user cancelled
@@ -151,7 +163,7 @@
 		<h2 class="text-sm font-normal text-[var(--ui-text)]">นำเข้า Diagram</h2>
 		<button
 			onclick={onclose}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label="ปิด"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

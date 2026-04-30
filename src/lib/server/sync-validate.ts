@@ -15,6 +15,7 @@ export const MAX_IDS_PER_PULL = 50;
 export const MAX_DIAGRAM_DATA_SIZE = 5 * 1024 * 1024; // 5 MB
 export const MAX_FUTURE_TIMESTAMP_MS = 5 * 60 * 1000; // 5 minutes
 export const DIAGRAM_ID_REGEX = /^[a-zA-Z0-9-]{6,40}$/;
+export const MAX_DIAGRAMS_PER_USER = 200;
 
 // --- Validators ---
 
@@ -57,7 +58,7 @@ export async function authenticateAndRateLimit(
 	return { sub, remaining };
 }
 
-export function withRateLimitHeaders(response: Response, remaining: number): Response {
-	response.headers.set('X-RateLimit-Remaining', String(remaining));
+export function withRateLimitHeaders(response: Response, _remaining: number): Response {
+	// No-op: don't expose rate limit internals in response headers
 	return response;
 }

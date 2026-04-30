@@ -11,6 +11,12 @@ async function getEmbeddedFontCss(fontFamily: string): Promise<string> {
 	const cached = fontCssCache.get(fontFamily);
 	if (cached) return cached;
 
+	// Evict oldest entry to prevent unbounded growth in long sessions
+	if (fontCssCache.size >= 20) {
+		const firstKey = fontCssCache.keys().next().value;
+		if (firstKey) fontCssCache.delete(firstKey);
+	}
+
 	try {
 		// Determine which Google Font to load based on diagram font setting
 		let fontName = 'Sarabun';
@@ -93,6 +99,7 @@ function prepareExportSvg(svgEl: SVGSVGElement, embeddedFontCss: string): { clon
 		if (defs) {
 			const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
 			style.textContent = embeddedFontCss;
+			// @ts-ignore — SVGStyleElement is a valid Node for prepend in DOM
 			defs.prepend(style);
 		}
 	}
@@ -200,6 +207,23 @@ export function exportErd(data: object, filename: string = 'diagram.erd') {
 	downloadBlob(blob, filename);
 }
 
+const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_IMPORT_ENTITIES = 500;
+const MAX_IMPORT_RELATIONSHIPS = 1000;
+
+/** Validate imported diagram data for schema + size limits */
+function validateDiagramImport(data: unknown): data is Record<string, unknown> {
+	if (!data || typeof data !== 'object') return false;
+	const d = data as Record<string, unknown>;
+	if (d.entities !== undefined && Array.isArray(d.entities)) {
+		if (d.entities.length > MAX_IMPORT_ENTITIES) return false;
+	}
+	if (d.relationships !== undefined && Array.isArray(d.relationships)) {
+		if (d.relationships.length > MAX_IMPORT_RELATIONSHIPS) return false;
+	}
+	return true;
+}
+
 /** Import .erd file */
 export function importErd(): Promise<unknown> {
 	return new Promise((resolve, reject) => {
@@ -209,10 +233,14 @@ export function importErd(): Promise<unknown> {
 		input.onchange = () => {
 			const file = input.files?.[0];
 			if (!file) return reject(new Error('No file selected'));
+			if (file.size > MAX_IMPORT_FILE_SIZE) return reject(new Error('ไฟล์ใหญ่เกินไป (สูงสุด 10MB)'));
 			const reader = new FileReader();
 			reader.onload = () => {
 				try {
 					const data = JSON.parse(reader.result as string);
+					if (!validateDiagramImport(data)) {
+						return reject(new Error('ข้อมูลเกินขีดจำกัด (entities ≤ 500, relationships ≤ 1000)'));
+					}
 					resolve(data);
 				} catch {
 					reject(new Error('ไฟล์ไม่ถูกต้อง'));
@@ -233,10 +261,15 @@ export function importJson(): Promise<unknown> {
 		input.onchange = () => {
 			const file = input.files?.[0];
 			if (!file) return reject(new Error('No file selected'));
+			if (file.size > MAX_IMPORT_FILE_SIZE) return reject(new Error('ไฟล์ใหญ่เกินไป (สูงสุด 10MB)'));
 			const reader = new FileReader();
 			reader.onload = () => {
 				try {
-					resolve(JSON.parse(reader.result as string));
+					const data = JSON.parse(reader.result as string);
+					if (!validateDiagramImport(data)) {
+						return reject(new Error('ข้อมูลเกินขีดจำกัด (entities ≤ 500, relationships ≤ 1000)'));
+					}
+					resolve(data);
 				} catch {
 					reject(new Error('Invalid JSON file'));
 				}
@@ -459,10 +492,21 @@ function computePdfLayout(
 		ratio = Math.min(contentAreaW / diagramW, contentAreaH / diagramH);
 	}
 
-	const scaledW = diagramW * ratio;
-	const scaledH = diagramH * ratio;
-	const cols = Math.max(1, Math.ceil(scaledW / contentAreaW));
-	const rows = Math.max(1, Math.ceil(scaledH / contentAreaH));
+	let cols = Math.max(1, Math.ceil((diagramW * ratio) / contentAreaW));
+	let rows = Math.max(1, Math.ceil((diagramH * ratio) / contentAreaH));
+
+	// Snap down: if reducing 1 col/row needs ≤30% ratio reduction, do it to avoid blank pages
+	const MAX_SHRINK = 0.70;
+	if (cols > 1) {
+		const fitted = ((cols - 1) * contentAreaW) / diagramW;
+		if (fitted >= ratio * MAX_SHRINK) cols--;
+	}
+	if (rows > 1) {
+		const fitted = ((rows - 1) * contentAreaH) / diagramH;
+		if (fitted >= ratio * MAX_SHRINK) rows--;
+	}
+
+	ratio = Math.min((cols * contentAreaW) / diagramW, (rows * contentAreaH) / diagramH);
 	return { ratio, cols, rows };
 }
 

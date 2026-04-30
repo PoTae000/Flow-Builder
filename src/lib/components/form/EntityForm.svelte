@@ -37,7 +37,7 @@
 				})
 			});
 			if (res.ok) {
-				const data = await res.json();
+				const data: any = await res.json();
 				suggestions = data.suggestions ?? [];
 			}
 		} catch {

@@ -89,16 +89,38 @@ export async function generateShareUrl(data: DiagramData): Promise<string> {
 	return `${base}#share=${encoded}`;
 }
 
+const MAX_ENCODED_SIZE = 500 * 1024; // 500KB
+const MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_ENTITIES = 500;
+const MAX_RELATIONSHIPS = 1000;
+
 /**
  * Parse share data from the current URL hash.
- * Returns null if no share data is found.
+ * Returns null if no share data is found or validation fails.
  */
 export async function parseShareHash(hash: string): Promise<DiagramData | null> {
 	if (!hash.startsWith('#share=')) return null;
 	try {
 		const encoded = hash.slice('#share='.length);
-		const json = await decompress(encoded);
-		return JSON.parse(json) as DiagramData;
+
+		// Size check on encoded data
+		if (encoded.length > MAX_ENCODED_SIZE) return null;
+
+		const jsonStr = await decompress(encoded);
+
+		// Size check on decompressed data
+		if (jsonStr.length > MAX_DECOMPRESSED_SIZE) return null;
+
+		const data = JSON.parse(jsonStr);
+
+		// Schema validation
+		if (!data || typeof data !== 'object') return null;
+		if (!Array.isArray(data.entities) || !Array.isArray(data.relationships)) return null;
+		if (typeof data.notation !== 'string') return null;
+		if (data.entities.length > MAX_ENTITIES) return null;
+		if (data.relationships.length > MAX_RELATIONSHIPS) return null;
+
+		return data as DiagramData;
 	} catch {
 		return null;
 	}

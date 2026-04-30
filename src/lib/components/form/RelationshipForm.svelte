@@ -44,17 +44,17 @@
 <!-- Backdrop -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="fixed inset-0 z-40 bg-black/50"
+	class="fixed inset-0 z-40 bg-black/50 animate-fade-in"
 	onclick={onclose}
 	onkeydown={(e) => { if (e.key === 'Escape') onclose(); }}
 ></div>
 
 <!-- Popup -->
-<div class="fixed left-1/2 top-1/2 z-50 w-[380px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl">
+<div class="fixed left-1/2 top-1/2 z-50 w-[380px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl animate-scale-in">
 	<div class="mb-4 flex items-center justify-between">
 		<h2 class="text-sm font-normal text-[var(--ui-text)]">{i18n.t('rel.add.title')}</h2>
 		<button
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			onclick={onclose}
 			title="Close"
 		>

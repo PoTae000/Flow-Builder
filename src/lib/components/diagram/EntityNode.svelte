@@ -18,7 +18,8 @@
 		onclick,
 		ondblclick,
 		ontouchstart,
-		oncontextmenu
+		oncontextmenu,
+		dragging = false
 	}: {
 		entity: Entity;
 		rect: Rect;
@@ -29,6 +30,7 @@
 		dimmed?: boolean;
 		missingPk?: boolean;
 		isOrphan?: boolean;
+		dragging?: boolean;
 		onmousedown?: (e: MouseEvent) => void;
 		onclick?: (e: MouseEvent) => void;
 		ondblclick?: (e: MouseEvent) => void;
@@ -44,6 +46,7 @@
 	class:selected
 	class:animate-in={animateIn}
 	class:dimmed
+	class:dragging
 	role="button"
 	tabindex="0"
 	aria-label="Entity: {entity.name}"
@@ -53,7 +56,7 @@
 	ontouchstart={ontouchstart}
 	oncontextmenu={oncontextmenu}
 	onkeydown={(e) => { if (e.key === 'Enter' && onclick) onclick(e as unknown as MouseEvent); }}
-	style="cursor: {entity.isLocked ? 'default' : 'grab'};"
+	style="cursor: {dragging ? 'grabbing' : entity.isLocked ? 'default' : 'grab'};"
 >
 	<!-- Selection highlight -->
 	{#if selected}
@@ -268,6 +271,7 @@
 	}
 	.entity-node { transition: filter 0.15s ease, opacity 0.3s ease; }
 	.entity-node:hover { filter: drop-shadow(0 0 4px rgba(59,130,246,0.2)); }
+	.entity-node.dragging { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15)); }
 	.entity-node.dimmed { opacity: 0.15; filter: grayscale(0.5); pointer-events: none; }
 	@keyframes selectionAppear { from { opacity: 0; } to { opacity: 0.5; } }
 	.selection-rect { animation: selectionAppear 0.15s ease-out; }

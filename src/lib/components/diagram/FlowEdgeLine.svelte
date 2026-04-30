@@ -7,12 +7,14 @@
 		edge,
 		fromNode,
 		toNode,
+		offset = 0,
 		selected = false,
 		onclick
 	}: {
 		edge: FlowEdge;
 		fromNode: FlowNode;
 		toNode: FlowNode;
+		offset?: number;
 		selected?: boolean;
 		onclick?: () => void;
 	} = $props();
@@ -58,7 +60,7 @@
 		if (dy < -NODE_H && absDx < NODE_W * 1.5) {
 			const fp = getPort(fromNode, 'right');
 			const tp = getPort(toNode, 'right');
-			const loopX = Math.max(fp.x, tp.x) + LOOP_OFFSET;
+			const loopX = Math.max(fp.x, tp.x) + LOOP_OFFSET + offset;
 			return [fp, { x: loopX, y: fp.y }, { x: loopX, y: tp.y }, tp];
 		}
 
@@ -81,16 +83,30 @@
 		if (fromSide === 'bottom' || fromSide === 'top') {
 			const midY = (fp.y + tp.y) / 2;
 			if (fp.x === tp.x) {
-				pts = [fp, tp];
+				// Straight vertical line - offset horizontally
+				pts = [fp, tp].map(p => ({ x: p.x + offset, y: p.y }));
 			} else {
-				pts = [fp, { x: fp.x, y: midY }, { x: tp.x, y: midY }, tp];
+				// Orthogonal path - offset the middle horizontal segment
+				pts = [
+					fp,
+					{ x: fp.x + offset, y: midY },
+					{ x: tp.x + offset, y: midY },
+					tp
+				];
 			}
 		} else {
 			const midX = (fp.x + tp.x) / 2;
 			if (fp.y === tp.y) {
-				pts = [fp, tp];
+				// Straight horizontal line - offset vertically
+				pts = [fp, tp].map(p => ({ x: p.x, y: p.y + offset }));
 			} else {
-				pts = [fp, { x: midX, y: fp.y }, { x: midX, y: tp.y }, tp];
+				// Orthogonal path - offset the middle vertical segment
+				pts = [
+					fp,
+					{ x: midX, y: fp.y + offset },
+					{ x: midX, y: tp.y + offset },
+					tp
+				];
 			}
 		}
 

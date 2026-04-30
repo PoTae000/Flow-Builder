@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ request, platform }) => {
 
 	return withRateLimitHeaders(
 		json({
-			diagrams: metaRaw ? JSON.parse(metaRaw) : [],
+			diagrams: metaRaw ? (() => { try { return JSON.parse(metaRaw); } catch { return []; } })() : [],
 			active: activeRaw ?? null
 		}),
 		remaining

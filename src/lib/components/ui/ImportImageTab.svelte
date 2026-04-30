@@ -79,7 +79,7 @@
 			});
 
 			if (!res.ok) {
-				const errData = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาดจาก AI' }));
+				const errData: any = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาดจาก AI' }));
 				throw new Error(errData.message || `Error: ${res.status}`);
 			}
 

@@ -18,7 +18,6 @@
       "Bash(ping:*)",
       "WebSearch",
       "Bash(python3:*)",
-      "Bash(node -e \"const d=require\\(''./tmp_models.json''\\); const free=d.data.filter\\(m=>m.id.includes\\('':free''\\)&&m.architecture?.modality?.includes\\(''image''\\)\\); free.forEach\\(m=>console.log\\(m.id, m.pricing\\)\\)\")",
       "Bash(node -e:*)",
       "WebFetch(domain:console.groq.com)",
       "Bash(bun svelte-kit sync:*)",
@@ -57,7 +56,13 @@
       "Bash(bunx wrangler deploy:*)",
       "Bash(python:*)",
       "Bash(git rebase:*)",
-      "Bash(GIT_EDITOR=true git rebase:*)"
+      "Bash(GIT_EDITOR=true git rebase:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(awk:*)",
+      "Bash(tr:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

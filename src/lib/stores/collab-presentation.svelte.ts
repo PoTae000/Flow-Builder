@@ -34,8 +34,9 @@ export function pushPresentationStop(collab: CollabState) {
  */
 export function pushPresentationStep(collab: CollabState, step: number) {
 	if (!collab._doc || !collab.connected) return;
-	collab.presentationStep = step;
-	collab.pushMeta('presentationStep', String(step));
+	const validStep = Math.max(0, Math.floor(step));
+	collab.presentationStep = validStep;
+	collab.pushMeta('presentationStep', String(validStep));
 }
 
 /**

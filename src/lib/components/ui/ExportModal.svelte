@@ -22,9 +22,9 @@
 	let exporting = $state(false);
 	let pdfPageSize = $state<'a3' | 'a4' | 'letter'>('a4');
 	let pdfOrientation = $state<'landscape' | 'portrait'>('landscape');
-	let pdfScaleMode = $state<'auto' | 'readable' | 'custom'>('auto');
-	let pdfMinTextSize = $state(10);
-	let pdfCustomScale = $state(100);
+	const pdfScaleMode = 'auto' as const;
+	const pdfMinTextSize = 10;
+	const pdfCustomScale = 100;
 	let pdfIncludeTitlePage = $state(false);
 	let pdfDiagramTitle = $state('');
 	let docsPreview = $state('');
@@ -36,7 +36,7 @@
 		if (activeTab === 'pdf') {
 			const svg = getSvgElement();
 			if (svg && !pdfThumbUrl) {
-				generateDiagramThumbnail(svg).then(url => { pdfThumbUrl = url; });
+				generateDiagramThumbnail(svg).then(url => { pdfThumbUrl = url; }).catch(() => { pdfThumbUrl = ''; });
 			}
 		}
 	});
@@ -67,7 +67,13 @@
 			diagramFont: diagram.diagramFont,
 			panX: diagram.panX,
 			panY: diagram.panY,
-			zoom: diagram.zoom
+			zoom: diagram.zoom,
+			bookmarks: Array.from(diagram.bookmarks.entries()).map(([slot, b]) => ({
+				slot,
+				panX: b.panX,
+				panY: b.panY,
+				zoom: b.zoom
+			}))
 		};
 		exportJson(data, `${filename || 'er-diagram'}.json`);
 		exported = true;
@@ -82,7 +88,13 @@
 			diagramFont: diagram.diagramFont,
 			panX: diagram.panX,
 			panY: diagram.panY,
-			zoom: diagram.zoom
+			zoom: diagram.zoom,
+			bookmarks: Array.from(diagram.bookmarks.entries()).map(([slot, b]) => ({
+				slot,
+				panX: b.panX,
+				panY: b.panY,
+				zoom: b.zoom
+			}))
 		};
 		exportErd(data, `${filename || 'diagram'}.erd`);
 		exported = true;
@@ -206,12 +218,13 @@
 			a4: [595.28, 841.89],
 			letter: [612, 792]
 		};
+		const sizeScale: Record<string, number> = { a3: 1.3, a4: 1, letter: 1 };
 		const [short, long] = sizes[pdfPageSize] || sizes.a4;
 		const w = pdfOrientation === 'landscape' ? long : short;
 		const h = pdfOrientation === 'landscape' ? short : long;
 		const totalPages = pdfInfo.pages;
-		const baseH = totalPages > 3 ? 100 : 140;
-		return { w: Math.round(baseH * (w / h)), h: baseH };
+		const baseH = (totalPages > 3 ? 100 : 140) * (sizeScale[pdfPageSize] ?? 1);
+		return { w: Math.round(baseH * (w / h)), h: Math.round(baseH) };
 	});
 
 	const pageSizeLabel = $derived(
@@ -223,7 +236,7 @@
 
 	const pdfInfo = $derived.by(() => {
 		const svg = getSvgElement();
-		if (!svg) return { pages: 1, textPt: 10 };
+		if (!svg) return { pages: 1, textPt: 10, cols: 1, rows: 1 };
 		return estimatePdfInfo(svg, {
 			pageSize: pdfPageSize,
 			orientation: pdfOrientation,
@@ -250,14 +263,14 @@
 		<h2 class="text-sm font-normal text-[var(--ui-text)]">ส่งออก Diagram</h2>
 		<button
 			onclick={onclose}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label="ปิด"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
 		</button>
 	</div>
 
-	<div class="p-5">
+	<div class="max-h-[calc(100vh-6rem)] overflow-y-auto p-5">
 		<!-- Summary + Share link -->
 		<div class="mb-4 flex items-center justify-between rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2">
 			<span class="text-xs text-[var(--ui-text-secondary)]">{entityCount} เอนทิตี, {relCount} ความสัมพันธ์</span>
@@ -373,56 +386,6 @@
 						</div>
 					</div>
 
-					<!-- Scale mode -->
-					<div class="mb-3">
-						<span class="mb-1 block text-xs text-[var(--ui-text-muted)]">สเกล</span>
-						<div class="flex gap-1.5">
-							{#each [['auto', 'พอดีหน้า'], ['readable', 'อ่านง่าย'], ['custom', 'กำหนดเอง']] as [val, label]}
-								<button
-									onclick={() => pdfScaleMode = val as 'auto' | 'readable' | 'custom'}
-									class="flex-1 rounded border px-2 py-1.5 text-[10px] transition {pdfScaleMode === val
-										? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)] text-[var(--ui-text)]'
-										: 'border-[var(--ui-border)] text-[var(--ui-text-muted)]'}"
-								>{label}</button>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Readable: min text size -->
-					{#if pdfScaleMode === 'readable'}
-						<div class="mb-3">
-							<span class="mb-1 block text-xs text-[var(--ui-text-muted)]">ขนาดตัวอักษรขั้นต่ำ</span>
-							<div class="flex gap-1.5">
-								{#each [[8, 'เล็ก (8pt)'], [10, 'ปกติ (10pt)'], [12, 'ใหญ่ (12pt)']] as [val, label]}
-									<button
-										onclick={() => pdfMinTextSize = val as number}
-										class="flex-1 rounded border px-2 py-1.5 text-[10px] transition {pdfMinTextSize === val
-											? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)] text-[var(--ui-text)]'
-											: 'border-[var(--ui-border)] text-[var(--ui-text-muted)]'}"
-									>{label}</button>
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					<!-- Custom: scale percent -->
-					{#if pdfScaleMode === 'custom'}
-						<div class="mb-3">
-							<span class="mb-1 block text-xs text-[var(--ui-text-muted)]">สเกล (%)</span>
-							<div class="flex items-center gap-2">
-								<input
-									type="range"
-									min="25"
-									max="200"
-									step="5"
-									bind:value={pdfCustomScale}
-									class="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[var(--ui-border)] accent-[var(--ui-accent)]"
-								/>
-								<span class="w-10 text-right text-[10px] text-[var(--ui-text-secondary)]">{pdfCustomScale}%</span>
-							</div>
-						</div>
-					{/if}
-
 					<!-- Title page -->
 					<div class="mb-3">
 						<label class="flex cursor-pointer items-center gap-2">
@@ -521,7 +484,7 @@
 		<button
 			onclick={handleExport}
 			disabled={exporting}
-			class="flex w-full items-center justify-center gap-2 rounded bg-[var(--ui-accent)] px-4 py-2 text-xs font-light text-[var(--ui-accent-text)] transition hover:opacity-90 disabled:opacity-60"
+			class="mt-4 flex w-full items-center justify-center gap-2 rounded bg-[var(--ui-accent)] px-4 py-2 text-xs font-light text-[var(--ui-accent-text)] transition hover:opacity-90 disabled:opacity-60"
 		>
 			{#if exporting}
 				<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>

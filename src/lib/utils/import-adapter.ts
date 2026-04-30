@@ -1,4 +1,6 @@
 import type { Entity, Relationship, Attribute, AttributeType, CardinalityType } from '$lib/types/er';
+import type { FlowNode, FlowEdge, FlowNodeType } from '$lib/types/flowchart';
+import type { DFDNode, DFDFlow, DFDNodeType } from '$lib/types/context-diagram';
 import type { ParsedResult, ParsedRelationship } from './sql-parser';
 import { generateId } from './id';
 
@@ -182,4 +184,118 @@ function mapCardinality(value: string): CardinalityType {
 		'1..*': '1..N'
 	};
 	return map[v] ?? '1';
+}
+
+// ========== Flowchart AI Parsing ==========
+
+export interface AiParsedFlowchart {
+	flowNodes: Array<{
+		name: string;
+		type: FlowNodeType;
+	}>;
+	flowEdges: Array<{
+		label?: string;
+		fromNode: string;
+		toNode: string;
+		condition?: 'yes' | 'no';
+	}>;
+}
+
+export interface ImportedFlowchartData {
+	flowNodes: FlowNode[];
+	flowEdges: FlowEdge[];
+}
+
+export function convertAiFlowchartToDiagram(data: AiParsedFlowchart): ImportedFlowchartData {
+	const flowNodes: FlowNode[] = [];
+	const flowEdges: FlowEdge[] = [];
+	const nameToId = new Map<string, string>();
+
+	// Create nodes
+	for (const node of data.flowNodes) {
+		const nodeId = generateId();
+		nameToId.set(node.name.toLowerCase(), nodeId);
+
+		flowNodes.push({
+			id: nodeId,
+			name: node.name,
+			type: node.type,
+			position: { x: 0, y: 0 } // will be set by autoLayout
+		});
+	}
+
+	// Create edges
+	for (const edge of data.flowEdges) {
+		const fromId = nameToId.get(edge.fromNode.toLowerCase());
+		const toId = nameToId.get(edge.toNode.toLowerCase());
+
+		if (fromId && toId) {
+			flowEdges.push({
+				id: generateId(),
+				label: edge.label || '',
+				fromNodeId: fromId,
+				toNodeId: toId,
+				condition: edge.condition
+			});
+		}
+	}
+
+	return { flowNodes, flowEdges };
+}
+
+// ========== DFD AI Parsing ==========
+
+export interface AiParsedDFD {
+	dfdNodes: Array<{
+		name: string;
+		type: DFDNodeType;
+		processNumber?: string;
+	}>;
+	dfdFlows: Array<{
+		label: string;
+		fromNode: string;
+		toNode: string;
+	}>;
+}
+
+export interface ImportedDFDData {
+	dfdNodes: DFDNode[];
+	dfdFlows: DFDFlow[];
+}
+
+export function convertAiDFDToDiagram(data: AiParsedDFD): ImportedDFDData {
+	const dfdNodes: DFDNode[] = [];
+	const dfdFlows: DFDFlow[] = [];
+	const nameToId = new Map<string, string>();
+
+	// Create nodes
+	for (const node of data.dfdNodes) {
+		const nodeId = generateId();
+		nameToId.set(node.name.toLowerCase(), nodeId);
+
+		dfdNodes.push({
+			id: nodeId,
+			name: node.name,
+			type: node.type,
+			position: { x: 0, y: 0 }, // will be set by autoLayout
+			processNumber: node.processNumber
+		});
+	}
+
+	// Create flows
+	for (const flow of data.dfdFlows) {
+		const fromId = nameToId.get(flow.fromNode.toLowerCase());
+		const toId = nameToId.get(flow.toNode.toLowerCase());
+
+		if (fromId && toId) {
+			dfdFlows.push({
+				id: generateId(),
+				label: flow.label,
+				fromNodeId: fromId,
+				toNodeId: toId
+			});
+		}
+	}
+
+	return { dfdNodes, dfdFlows };
 }

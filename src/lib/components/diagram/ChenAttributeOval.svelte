@@ -30,8 +30,8 @@
 	const entityCx = $derived(entityRect.x + entityRect.width / 2);
 	const entityCy = $derived(entityRect.y + entityRect.height / 2);
 
-	// Determine available arc for placing attributes
-	const angleRange = $derived.by(() => {
+	// Find best starting direction (farthest from occupied sides)
+	const bestStartAngle = $derived.by(() => {
 		const avoidAngles: number[] = [];
 		for (const side of occupiedSides) {
 			switch (side) {
@@ -41,12 +41,12 @@
 				case 'left': avoidAngles.push(Math.PI); break;
 			}
 		}
+		if (avoidAngles.length === 0) return -Math.PI / 2;
 
-		const candidateStarts = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
+		const candidates = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
 		let bestStart = -Math.PI / 2;
 		let bestDist = 0;
-
-		for (const cs of candidateStarts) {
+		for (const cs of candidates) {
 			let minDist = Infinity;
 			for (const av of avoidAngles) {
 				let diff = Math.abs(cs - av);
@@ -58,21 +58,43 @@
 				bestStart = cs;
 			}
 		}
-
-		const spread = Math.min(Math.PI * 1.4, Math.PI * 0.4 * Math.max(totalAttributes, 2));
-		return { start: bestStart, spread };
+		return bestStart;
 	});
 
+	// Use full circle when many attributes or many occupied sides
+	const useFullCircle = $derived(totalAttributes >= 5 || occupiedSides.length >= 3);
+
 	const computedAngle = $derived.by(() => {
-		const { start, spread } = angleRange;
-		if (totalAttributes <= 1) return start;
-		const startAngle = start - spread / 2;
+		if (totalAttributes <= 1) return bestStartAngle;
+		if (useFullCircle) {
+			// Evenly distribute around the full circle, starting from best direction
+			return bestStartAngle + (index * Math.PI * 2) / totalAttributes;
+		}
+		// Arc mode: fan out from best direction
+		const spread = Math.min(Math.PI * 1.5, Math.PI * 0.45 * Math.max(totalAttributes, 2));
+		const startAngle = bestStartAngle - spread / 2;
 		return startAngle + (index / (totalAttributes - 1)) * spread;
 	});
 
-	const distance = 90;
 	const ovalRx = 38;
 	const ovalRy = 16;
+
+	// Dynamic distance: clear the entity edge along each angle direction
+	const distance = $derived.by(() => {
+		const halfW = entityRect.width / 2;
+		const halfH = entityRect.height / 2;
+		const cos = Math.cos(computedAngle);
+		const sin = Math.sin(computedAngle);
+		let edgeDist: number;
+		if (Math.abs(cos) < 0.001) {
+			edgeDist = halfH / Math.abs(sin);
+		} else if (Math.abs(sin) < 0.001) {
+			edgeDist = halfW / Math.abs(cos);
+		} else {
+			edgeDist = Math.min(halfW / Math.abs(cos), halfH / Math.abs(sin));
+		}
+		return edgeDist + ovalRx + 8;
+	});
 
 	// Use custom position if available, otherwise computed
 	const cx = $derived(attribute.position ? attribute.position.x : entityCx + Math.cos(computedAngle) * distance);

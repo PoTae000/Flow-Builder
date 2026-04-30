@@ -6,7 +6,8 @@ import {
 	isValidTimestamp,
 	estimateDataSize,
 	MAX_DIAGRAMS_PER_PUSH,
-	MAX_DIAGRAM_DATA_SIZE
+	MAX_DIAGRAM_DATA_SIZE,
+	MAX_DIAGRAMS_PER_USER
 } from '$lib/server/sync-validate';
 import type { RequestHandler } from './$types';
 
@@ -87,6 +88,12 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 				continue;
 			}
 
+			// Check per-user diagram limit (only for new diagrams)
+			if (!cloudMap.has(itemId) && cloudMap.size >= MAX_DIAGRAMS_PER_USER) {
+				failed.push({ id: itemId, reason: `Maximum ${MAX_DIAGRAMS_PER_USER} diagrams per user` });
+				continue;
+			}
+
 			const cloudMeta = cloudMap.get(itemId);
 			if (!cloudMeta || item.meta.updatedAt >= cloudMeta.updatedAt) {
 				cloudMap.set(itemId, item.meta);
@@ -104,9 +111,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			kvPuts.push(kv.put(`user:${sub}:active`, active));
 		}
 
-		// Bump version counter
-		const versionRaw = await kv.get(`user:${sub}:version`);
-		const newVersion = (versionRaw ? parseInt(versionRaw, 10) : 0) + 1;
+		// Bump version counter using Date.now() to avoid read-increment-write race
+		const newVersion = Date.now();
 		kvPuts.push(kv.put(`user:${sub}:version`, String(newVersion)));
 
 		await Promise.all(kvPuts);
@@ -120,6 +126,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	} catch (err) {
 		if (isHttpError(err)) throw err;
 		console.error('[sync/push] KV error:', err);
-		throw error(500, `Sync push failed: ${err instanceof Error ? err.message : 'Unknown KV error'}`);
+		throw error(500, 'Sync push failed');
 	}
 };

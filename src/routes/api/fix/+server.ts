@@ -1,8 +1,94 @@
 import type { RequestHandler } from './$types';
 import { aiRequest } from '$lib/server/ai-request';
 import { buildDiagramDescription } from '$lib/utils/diagram-description';
+import { buildUnifiedDiagramDescription } from '$lib/utils/diagram-description-multi';
+import { validateEntityLimits, MAX_ISSUES } from '$lib/server/ai-limits';
+import { sanitizeName } from '$lib/utils/sanitize';
+import type { DiagramType } from '$lib/types/diagram';
 
-const FIX_PROMPT = `You are an expert database architect. You will receive an ER diagram that has issues, along with a list of those issues. Your job is to fix ALL the issues AND proactively fix any other problems so the diagram scores a PERFECT 100/100.
+const FLOWCHART_FIX_PROMPT = `You are an expert flowchart designer. You will receive a flowchart that has issues, along with a list of those issues. Your job is to fix ALL the issues AND proactively fix any other problems so the flowchart scores a PERFECT 100/100.
+
+You MUST return ONLY valid JSON (no markdown, no explanation) in this exact format:
+{
+  "flowNodes": [
+    { "name": "Start", "type": "start-end" },
+    { "name": "Process Data", "type": "process" },
+    { "name": "Is Valid?", "type": "decision" },
+    { "name": "End", "type": "start-end" }
+  ],
+  "flowEdges": [
+    { "label": "", "fromNode": "Start", "toNode": "Process Data" },
+    { "label": "", "fromNode": "Process Data", "toNode": "Is Valid?" },
+    { "label": "yes", "fromNode": "Is Valid?", "toNode": "End", "condition": "yes" },
+    { "label": "no", "fromNode": "Is Valid?", "toNode": "Process Data", "condition": "no" }
+  ]
+}
+
+Node type must be one of: "start-end", "process", "decision", "input-output", "connector", "document", "database", "predefined-process", "manual-operation", "preparation", "delay", "display", "internal-storage"
+Condition (optional) must be: "yes" or "no" (for decision nodes)
+
+GOAL: The output MUST be a PERFECT flowchart that scores 100/100.
+
+Checklist:
+1. Exactly 1 Start node (start-end type)
+2. At least 1 End node (start-end type)
+3. All nodes reachable from Start
+4. All paths lead to End
+5. Decision nodes have exactly 2 outgoing edges (yes/no)
+6. Process names use action verbs
+7. Decision names are questions
+8. No orphaned nodes
+9. No infinite loops without exit
+10. Clear, logical flow
+
+Rules:
+- Fix ALL listed issues AND proactively fix anything else
+- Keep original structure where correct
+- Add missing nodes (Start/End if missing)
+- Connect orphaned nodes
+- Label decision branches correctly`;
+
+const DFD_FIX_PROMPT = `You are an expert DFD (Data Flow Diagram) designer. You will receive a DFD that has issues, along with a list of those issues. Your job is to fix ALL the issues AND proactively fix any other problems so the DFD scores a PERFECT 100/100.
+
+You MUST return ONLY valid JSON (no markdown, no explanation) in this exact format:
+{
+  "dfdNodes": [
+    { "name": "Customer", "type": "external-entity" },
+    { "name": "Process Order", "type": "process", "processNumber": "1.0" },
+    { "name": "Orders DB", "type": "data-store" }
+  ],
+  "dfdFlows": [
+    { "label": "Order Request", "fromNode": "Customer", "toNode": "Process Order" },
+    { "label": "Order Data", "fromNode": "Process Order", "toNode": "Orders DB" }
+  ]
+}
+
+Node type must be one of: "process", "external-entity", "data-store"
+All processes MUST have processNumber (e.g., "1.0", "2.0")
+ALL flows MUST have descriptive labels
+
+GOAL: The output MUST be a PERFECT DFD that scores 100/100.
+
+Checklist:
+1. All processes have numbers (1.0, 2.0, etc.)
+2. All processes have flows in AND out
+3. External entities don't connect to each other directly
+4. Data stores don't connect to external entities directly
+5. ALL flows have descriptive labels
+6. Processes use verb phrases
+7. Data stores use nouns
+8. External entities use nouns
+9. No orphaned nodes
+10. Logical, complete design
+
+Rules:
+- Fix ALL listed issues AND proactively fix anything else
+- Keep original structure where correct
+- Add missing flows for balance
+- Number all processes correctly
+- Label all flows descriptively`;
+
+const ER_FIX_PROMPT = `You are an expert database architect. You will receive an ER diagram that has issues, along with a list of those issues. Your job is to fix ALL the issues AND proactively fix any other problems so the diagram scores a PERFECT 100/100.
 
 You MUST return ONLY valid JSON (no markdown, no explanation) in this exact format:
 {
@@ -53,6 +139,12 @@ Rules:
 - Add missing relationships between entities that logically should be connected.
 - After generating, mentally review your output against ALL 10 criteria above. If any fail, fix them before responding.`;
 
+function getFixPromptForType(diagramType: DiagramType): string {
+	if (diagramType === 'flowchart') return FLOWCHART_FIX_PROMPT;
+	if (diagramType === 'context') return DFD_FIX_PROMPT;
+	return ER_FIX_PROMPT;
+}
+
 interface IssueData {
 	severity: string;
 	title: string;
@@ -70,19 +162,54 @@ function buildIssuesDescription(issues: IssueData[]): string {
 	return desc;
 }
 
+const ALLOWED_SEVERITIES = new Set(['error', 'warning', 'info']);
+
 export const POST: RequestHandler = async ({ request, platform }) => {
 	return aiRequest({
 		request,
 		platform,
-		validateBody: (body) => Array.isArray(body.entities) && body.entities.length > 0,
+		validateBody: (body) => {
+			const type: DiagramType = body.diagramType || 'er';
+			if (type === 'er') {
+				if (!Array.isArray(body.entities) || body.entities.length === 0) return false;
+			} else if (type === 'flowchart') {
+				if (!Array.isArray(body.flowNodes) || body.flowNodes.length === 0) return false;
+			} else if (type === 'context') {
+				if (!Array.isArray(body.dfdNodes) || body.dfdNodes.length === 0) return false;
+			}
+			return validateEntityLimits(body);
+		},
 		buildMessages: (body) => {
-			const { entities, relationships, issues } = body;
-			const diagramDescription = buildDiagramDescription(entities, relationships || [], { headerPrefix: 'Current ' });
-			const issuesDescription = buildIssuesDescription(issues || []);
-			const userContent = `Here is the current ER diagram and its issues. Fix ALL the issues and return the corrected diagram as JSON.\n\n${diagramDescription}\n\n${issuesDescription}`;
+			const type: DiagramType = body.diagramType || 'er';
+			let issues: IssueData[] = Array.isArray(body.issues) ? body.issues : [];
+
+			// H3: Sanitize issue fields and enforce limits
+			issues = issues.slice(0, MAX_ISSUES).map((issue: IssueData) => ({
+				severity: ALLOWED_SEVERITIES.has(issue.severity) ? issue.severity : 'info',
+				title: sanitizeName(String(issue.title || ''), 200),
+				description: sanitizeName(String(issue.description || ''), 500),
+				reason: sanitizeName(String(issue.reason || ''), 500),
+				fix: sanitizeName(String(issue.fix || ''), 500)
+			}));
+
+			// Build diagram description based on type
+			let diagramDescription: string;
+			if (type === 'er') {
+				const { entities, relationships } = body;
+				diagramDescription = buildDiagramDescription(entities, relationships || [], { headerPrefix: 'Current ' });
+			} else {
+				diagramDescription = buildUnifiedDiagramDescription(type, body);
+			}
+
+			const issuesDescription = buildIssuesDescription(issues);
+
+			const typeLabel = type === 'er' ? 'ER diagram' :
+				type === 'flowchart' ? 'flowchart' : 'DFD';
+
+			const userContent = `Here is the current ${typeLabel} and its issues. Fix ALL the issues and return the corrected diagram as JSON.\n\n${diagramDescription}\n\n${issuesDescription}`;
 
 			return [
-				{ role: 'system', content: FIX_PROMPT },
+				{ role: 'system', content: getFixPromptForType(type) },
 				{ role: 'user', content: userContent }
 			];
 		},

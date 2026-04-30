@@ -31,7 +31,7 @@
 	{#if value}
 		<button
 			onclick={() => onchange('')}
-			class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--ui-text-muted)] transition hover:text-[var(--ui-text)]"
+			class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--ui-text-muted)] transition hover:text-[var(--ui-text)] hover:scale-110 active:scale-90"
 			aria-label="Clear search"
 		>
 			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

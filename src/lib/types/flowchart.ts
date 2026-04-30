@@ -37,6 +37,7 @@ export interface FlowNode {
 	type: FlowNodeType;
 	position: Position;
 	color?: string;
+	borderRadius?: number; // For start-end nodes (0-50, default 20)
 }
 
 export interface FlowEdge {

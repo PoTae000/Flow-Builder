@@ -132,3 +132,19 @@ svg [role="button"]:focus-visible {
 svg.touch-canvas {
 	touch-action: none;
 }
+
+/* Skeleton shimmer loading */
+@keyframes shimmer {
+	0% { background-position: -200% 0; }
+	100% { background-position: 200% 0; }
+}
+.skeleton {
+	background: linear-gradient(90deg, var(--ui-bg-tertiary) 25%, var(--ui-border) 50%, var(--ui-bg-tertiary) 75%);
+	background-size: 200% 100%;
+	animation: shimmer 1.5s ease-in-out infinite;
+	border-radius: 0.375rem;
+}
+
+/* Canvas fade-in on tab switch */
+@keyframes canvasFadeIn { from { opacity: 0.3; } to { opacity: 1; } }
+.canvas-fade-in { animation: canvasFadeIn 0.25s ease-out; }

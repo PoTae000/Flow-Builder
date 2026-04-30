@@ -15,7 +15,7 @@
 			{@const s = typeStyles[t.type] || typeStyles.info}
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 			<div
-				class="pointer-events-auto flex items-center gap-2.5 rounded-lg border px-4 py-2.5 shadow-lg toast-enter {s.bg} {s.border} {s.text}"
+				class="pointer-events-auto flex items-center gap-2.5 rounded-lg border px-4 py-2.5 shadow-lg {t.exiting ? 'toast-exit' : 'toast-enter'} {s.bg} {s.border} {s.text}"
 				onclick={() => toast.dismiss(t.id)}
 				style="cursor: pointer; max-width: 360px;"
 			>
@@ -30,10 +30,17 @@
 
 <style>
 	@keyframes toastSlideIn {
-		from { opacity: 0; transform: translateY(16px) scale(0.95); }
-		to { opacity: 1; transform: translateY(0) scale(1); }
+		from { opacity: 0; transform: translateX(100px); }
+		to { opacity: 1; transform: translateX(0); }
+	}
+	@keyframes toastSlideOut {
+		from { opacity: 1; transform: translateX(0); }
+		to { opacity: 0; transform: translateX(100px); }
 	}
 	.toast-enter {
 		animation: toastSlideIn 0.25s ease-out;
+	}
+	.toast-exit {
+		animation: toastSlideOut 0.2s ease-in forwards;
 	}
 </style>

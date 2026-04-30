@@ -120,7 +120,7 @@
 <div class="fixed inset-0 z-40" onclick={() => { grantMenuFor = -1; onclose(); }}></div>
 <div
 	class="fixed z-50 max-h-[80vh] overflow-y-auto border border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-xl inset-x-0 bottom-0 w-full rounded-t-2xl md:inset-x-auto md:bottom-auto md:top-26 md:right-3 md:w-80 md:rounded-lg"
-	style="transform: translateY({swipeDeltaY}px); transition: {swiping ? 'none' : 'transform 0.2s ease-out'};"
+	style="transform: translateY({swipeDeltaY}px); opacity: {Math.max(0.3, 1 - swipeDeltaY / 200)}; transition: {swiping ? 'none' : 'transform 0.2s ease-out, opacity 0.2s ease-out'};"
 >
 	<!-- Drag handle (mobile only) -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->

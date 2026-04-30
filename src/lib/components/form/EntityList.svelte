@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { slide } from 'svelte/transition';
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { AttributeType } from '$lib/types/er';
 	import AttributeForm from './AttributeForm.svelte';
@@ -72,6 +75,41 @@
 		node.focus();
 		node.select();
 	}
+
+	// Collapsible drawer
+	let expandedEntities = $state(new Set<string>());
+
+	function toggleExpandOnly(entityId: string, e: MouseEvent) {
+		e.stopPropagation();
+		const next = new Set(expandedEntities);
+		if (next.has(entityId)) next.delete(entityId);
+		else next.add(entityId);
+		expandedEntities = next;
+	}
+
+	function handleEntityClick(entityId: string) {
+		const isAlreadySelected = diagram.selectedNodeIdSet.has(entityId);
+		diagram.selectEntity(entityId);
+		if (isAlreadySelected) {
+			// Already selected → toggle drawer
+			const next = new Set(expandedEntities);
+			if (next.has(entityId)) next.delete(entityId);
+			else next.add(entityId);
+			expandedEntities = next;
+		} else {
+			// Newly selected → expand
+			if (!expandedEntities.has(entityId)) {
+				const next = new Set(expandedEntities);
+				next.add(entityId);
+				expandedEntities = next;
+			}
+		}
+	}
+
+	// Drag-to-reorder attributes
+	let dragAttrId = $state<string | null>(null);
+	let dragEntityId = $state<string | null>(null);
+	let dragOverAttrId = $state<string | null>(null);
 </script>
 
 {#if diagram.entities.length > 0}
@@ -80,14 +118,27 @@
 
 		<div class="flex flex-col gap-2">
 			{#each filteredEntities as entity (entity.id)}
-				{@const isSelected = diagram.selectedNodeIds.includes(entity.id)}
+				{@const isSelected = diagram.selectedNodeIdSet.has(entity.id)}
 				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 				<div
-					class="min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 transition-all {isSelected ? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)] shadow-sm' : 'border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] hover:border-[var(--ui-border)]'}"
-					onclick={() => diagram.selectEntity(entity.id)}
+					class="min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 transition-all duration-150 {isSelected ? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)] shadow-sm' : 'border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] hover:border-[var(--ui-border)] hover:translate-x-0.5 hover:shadow-sm'}"
+					onclick={() => handleEntityClick(entity.id)}
 				>
 					<!-- Entity header -->
 					<div class="flex items-center justify-between gap-2">
+						<!-- Chevron toggle -->
+						{#if entity.attributes.length > 0}
+							<button
+								class="shrink-0 rounded p-0.5 text-[var(--ui-text-muted)] transition-transform duration-200 hover:text-[var(--ui-text-secondary)] {expandedEntities.has(entity.id) ? 'rotate-90' : ''}"
+								onclick={(e) => toggleExpandOnly(entity.id, e)}
+								aria-label={expandedEntities.has(entity.id) ? 'Collapse attributes' : 'Expand attributes'}
+							>
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" /></svg>
+							</button>
+						{:else}
+							<span class="w-4"></span>
+						{/if}
+
 						{#if editingId === entity.id}
 							<input
 								type="text"
@@ -99,19 +150,23 @@
 								class="flex-1 rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-2 py-1 text-sm font-light text-[var(--ui-text)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
 							/>
 						{:else}
-							<button
-								class="flex-1 text-left text-sm font-normal text-[var(--ui-text)] transition hover:opacity-80"
-								onclick={() => diagram.selectEntity(entity.id)}
-								ondblclick={() => startEdit(entity.id, entity.name)}
-							>
-								{entity.name}
+							<div class="flex flex-1 min-w-0 items-center">
+								<button
+									class="w-fit text-left text-sm font-normal text-[var(--ui-text)] transition hover:opacity-80"
+									ondblclick={() => startEdit(entity.id, entity.name)}
+								>
+									{entity.name}
+								</button>
 								{#if entity.isWeak}
 									<span class="ml-1 text-xs text-amber-500">(weak)</span>
 								{/if}
 								{#if entity.isLocked}
 									<span class="ml-1 text-xs text-blue-500">(locked)</span>
 								{/if}
-							</button>
+								{#if entity.attributes.length > 0 && !expandedEntities.has(entity.id)}
+									<span class="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--ui-bg-tertiary)] px-1 text-[10px] text-[var(--ui-text-muted)]">{entity.attributes.length}</span>
+								{/if}
+							</div>
 						{/if}
 
 						<div class="flex items-center gap-1">
@@ -131,7 +186,16 @@
 							</button>
 							<button
 								class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-950 dark:hover:text-red-400"
-								onclick={() => diagram.removeEntity(entity.id)}
+								onclick={async () => {
+									const confirmed = await dialog.confirm({
+										title: 'ลบ Entity',
+										message: `ต้องการลบ "${entity.name}" หรือไม่?`,
+										confirmText: 'ลบ',
+										cancelText: 'ยกเลิก',
+										variant: 'danger'
+									});
+									if (confirmed) diagram.removeEntity(entity.id);
+								}}
 								title="Delete entity"
 							>
 								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -139,10 +203,11 @@
 						</div>
 					</div>
 
-					<!-- Attribute list -->
-					{#if entity.attributes.length > 0}
-						<div class="mt-2 flex flex-col gap-0.5">
+					<!-- Attribute list (drawer) -->
+					{#if entity.attributes.length > 0 && expandedEntities.has(entity.id)}
+						<div class="mt-2 flex flex-col gap-0.5" transition:slide={{ duration: 250 }}>
 							{#each entity.attributes as attr, i (attr.id)}
+							<div animate:flip={{ duration: 200 }}>
 								{#if editingAttrId === attr.id && editingAttrEntityId === entity.id}
 									<!-- Inline edit mode -->
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -178,9 +243,40 @@
 									</div>
 								{:else}
 									<!-- Display mode -->
-									<div class="group flex items-center justify-between rounded px-2 py-0.5 text-xs hover:bg-[var(--ui-hover)]">
+									<div
+										class="group flex items-center justify-between rounded px-2 py-0.5 text-xs cursor-grab hover:bg-[var(--ui-hover)]"
+										class:opacity-30={dragAttrId === attr.id && dragEntityId === entity.id}
+										class:border-t-2={dragOverAttrId === attr.id && dragEntityId === entity.id}
+										class:border-[var(--ui-accent)]={dragOverAttrId === attr.id && dragEntityId === entity.id}
+										draggable="true"
+										ondragstart={(e) => {
+											dragAttrId = attr.id;
+											dragEntityId = entity.id;
+											if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+										}}
+										ondragover={(e) => {
+											if (dragEntityId !== entity.id) return;
+											e.preventDefault();
+											dragOverAttrId = attr.id;
+										}}
+										ondragleave={() => { dragOverAttrId = null; }}
+										ondrop={(e) => {
+											e.preventDefault();
+											if (dragAttrId && dragEntityId === entity.id) {
+												diagram.reorderAttribute(entity.id, dragAttrId, attr.id);
+											}
+											dragAttrId = null;
+											dragEntityId = null;
+											dragOverAttrId = null;
+										}}
+										ondragend={() => {
+											dragAttrId = null;
+											dragEntityId = null;
+											dragOverAttrId = null;
+										}}
+									>
 										<button
-											class="text-left text-[var(--ui-text-secondary)] transition hover:opacity-80"
+											class="w-fit text-left text-[var(--ui-text-secondary)] transition hover:opacity-80"
 											ondblclick={() => startAttrEdit(entity.id, attr.id, attr.name, attr.type)}
 										>
 											{#if attr.type === 'primary_key'}
@@ -217,12 +313,13 @@
 										</div>
 									</div>
 								{/if}
+							</div>
 							{/each}
 						</div>
 					{/if}
 
-					<!-- Add attribute form (show only when single-selected) -->
-					{#if isSelected && diagram.selectedEntityId === entity.id}
+					<!-- Add attribute form (show only when single-selected & expanded) -->
+					{#if isSelected && diagram.selectedEntityId === entity.id && expandedEntities.has(entity.id)}
 						<div class="mt-2 animate-slide-up">
 							<AttributeForm entityId={entity.id} />
 						</div>

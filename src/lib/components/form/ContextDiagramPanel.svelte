@@ -81,7 +81,7 @@
 		</span>
 		<div class="flex flex-col gap-1.5">
 			{#each diagram.dfdNodes as node (node.id)}
-				{@const isSelected = diagram.selectedNodeIds.includes(node.id)}
+				{@const isSelected = diagram.selectedNodeIdSet.has(node.id)}
 				<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 				<div
 					class="flex items-center justify-between rounded-lg border p-2 text-sm transition-all cursor-pointer {isSelected ? 'border-[var(--ui-text-secondary)] bg-[var(--ui-bg-tertiary)]' : 'border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] hover:border-[var(--ui-border)]'}"

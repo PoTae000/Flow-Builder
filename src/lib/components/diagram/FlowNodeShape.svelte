@@ -51,7 +51,7 @@
 			y={cy - H / 2 - 2}
 			width={W + 4}
 			height={H + 4}
-			rx={node.type === 'start-end' || node.type === 'connector' || node.type === 'delay' ? 22 : 2}
+			rx={node.type === 'start-end' ? (node.borderRadius || 20) + 2 : (node.type === 'connector' || node.type === 'delay' ? 22 : 2)}
 			fill="none"
 			stroke={colors.selectedStroke}
 			stroke-width="2.5"
@@ -67,7 +67,7 @@
 			y={cy - H / 2}
 			width={W}
 			height={H}
-			rx="20"
+			rx={node.borderRadius ?? 20}
 			fill={node.color || colors.entityFill}
 			stroke={selected ? colors.selectedStroke : colors.entityStroke}
 			stroke-width="1.5"

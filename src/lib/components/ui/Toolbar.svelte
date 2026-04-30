@@ -2,6 +2,7 @@
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { collab } from '$lib/stores/collab.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 	import { i18n } from '$lib/i18n';
 
 	let {
@@ -68,13 +69,14 @@
 
 	async function autoLayout() {
 		if (await collab.requestPermission('auto-layout')) {
-			diagram.animateLayout();
+			const timedOut = diagram.animateLayout();
+			if (timedOut) toast.warning('Layout ใช้เวลานานเกินไป ผลลัพธ์อาจไม่สมบูรณ์');
 		}
 	}
 
 	const zoomPercent = $derived(Math.round(diagram.zoom * 100));
-	const btnClass = "rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
-	const btnWithLabelClass = "flex items-center gap-1 rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
+	const btnClass = "rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90";
+	const btnWithLabelClass = "flex items-center gap-1 rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-95";
 	const overflowBtnClass = "flex w-full items-center gap-2 rounded px-3 py-2 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
 </script>
 
@@ -91,11 +93,13 @@
 		title={i18n.t(theme.isDark ? 'toolbar.lightMode' : 'toolbar.darkMode')}
 		aria-label={i18n.t(theme.isDark ? 'toolbar.lightMode' : 'toolbar.darkMode')}
 	>
-		{#if theme.isDark}
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-		{:else}
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-		{/if}
+		{#key theme.isDark}
+			{#if theme.isDark}
+				<svg class="h-4 w-4 theme-icon-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+			{:else}
+				<svg class="h-4 w-4 theme-icon-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+			{/if}
+		{/key}
 	</button>
 
 	<!-- Zoom controls -->
@@ -119,13 +123,15 @@
 
 	<!-- Desktop primary buttons (always visible on xl) -->
 	<div class="hidden xl:contents">
-		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+		{#if diagram.diagramType === 'er'}
+			<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 
-		<!-- Add Relationship (important, always visible) -->
-		<button data-onboarding="add-rel" class={btnWithLabelClass} onclick={onaddrelationship} title={i18n.t('toolbar.addRelationship')} aria-label={i18n.t('toolbar.addRelationship')}>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
-			{i18n.t('toolbar.addRelationship')}
-		</button>
+			<!-- Add Relationship (important, always visible) -->
+			<button data-onboarding="add-rel" class={btnWithLabelClass} onclick={onaddrelationship} title={i18n.t('toolbar.addRelationship')} aria-label={i18n.t('toolbar.addRelationship')}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+				{i18n.t('toolbar.addRelationship')}
+			</button>
+		{/if}
 
 		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 
@@ -209,22 +215,40 @@
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
-			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onaddnote?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-				{i18n.t('toolbar.addNote')}
-			</button>
+			{#if diagram.diagramType === 'er'}
+				<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onaddnote?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+					{i18n.t('toolbar.addNote')}
+				</button>
+			{/if}
+
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ondatadict?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-				{i18n.t('toolbar.dataDict')}
+				{#if diagram.diagramType === 'flowchart'}
+					Node List
+				{:else if diagram.diagramType === 'context'}
+					Flow Dictionary
+				{:else}
+					{i18n.t('toolbar.dataDict')}
+				{/if}
 			</button>
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onmatrix?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-				{i18n.t('toolbar.matrix')}
+				{#if diagram.diagramType === 'flowchart'}
+					Connection Matrix
+				{:else if diagram.diagramType === 'context'}
+					Flow Matrix
+				{:else}
+					{i18n.t('toolbar.matrix')}
+				{/if}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onsqlquery?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
-				{i18n.t('toolbar.sqlQuery')}
-			</button>
+
+			{#if diagram.diagramType === 'er'}
+				<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onsqlquery?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+					{i18n.t('toolbar.sqlQuery')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onquiz?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
 				{i18n.t('toolbar.quiz')}
@@ -308,10 +332,12 @@
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onaddrelationship?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
-				{i18n.t('toolbar.addRelationship')}
-			</button>
+			{#if diagram.diagramType === 'er'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; onaddrelationship?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+					{i18n.t('toolbar.addRelationship')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onaddnote?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
 				{i18n.t('toolbar.addNote')}
@@ -356,16 +382,31 @@
 			</button>
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ondatadict?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-				{i18n.t('toolbar.dataDict')}
+				{#if diagram.diagramType === 'flowchart'}
+					Node List
+				{:else if diagram.diagramType === 'context'}
+					Flow Dictionary
+				{:else}
+					{i18n.t('toolbar.dataDict')}
+				{/if}
 			</button>
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onmatrix?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-				{i18n.t('toolbar.matrix')}
+				{#if diagram.diagramType === 'flowchart'}
+					Connection Matrix
+				{:else if diagram.diagramType === 'context'}
+					Flow Matrix
+				{:else}
+					{i18n.t('toolbar.matrix')}
+				{/if}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onsqlquery?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
-				{i18n.t('toolbar.sqlQuery')}
-			</button>
+
+			{#if diagram.diagramType === 'er'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; onsqlquery?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+					{i18n.t('toolbar.sqlQuery')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onquiz?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
 				{i18n.t('toolbar.quiz')}
@@ -398,11 +439,6 @@
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 				{i18n.t('toolbar.history')}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontutorial?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-				{i18n.t('toolbar.tutorial')}
-			</button>
-
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; i18n.toggle(); }}>
@@ -412,3 +448,13 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	@keyframes themeIconSpin {
+		from { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+		to { opacity: 1; transform: rotate(0) scale(1); }
+	}
+	:global(.theme-icon-spin) {
+		animation: themeIconSpin 0.3s ease-out;
+	}
+</style>

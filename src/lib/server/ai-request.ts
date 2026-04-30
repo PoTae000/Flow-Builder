@@ -12,17 +12,14 @@ import { checkRateLimit } from '$lib/server/rate-limit';
 const ANON_RATE_LIMIT = 5; // req/min
 const AUTH_RATE_LIMIT = 20; // req/min
 const DEFAULT_TIMEOUT = 30_000; // 30s
+const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 
 function getApiKey(platform: App.Platform | undefined): string | undefined {
 	return platform?.env?.GROQ_API_KEY || env.GROQ_API_KEY;
 }
 
-function getClientIp(request: Request): string {
-	return (
-		request.headers.get('cf-connecting-ip') ||
-		request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-		'unknown'
-	);
+export function getClientIp(request: Request): string {
+	return request.headers.get('cf-connecting-ip') || 'unknown';
 }
 
 export interface AiRequestOptions {
@@ -57,6 +54,12 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 		throw error(503, 'ฟีเจอร์ AI ยังไม่พร้อมใช้งาน ต้องตั้งค่า GROQ_API_KEY ก่อน');
 	}
 
+	// 1.5 Body size check — read actual bytes (Content-Length header is spoofable)
+	const rawText = await request.text();
+	if (new TextEncoder().encode(rawText).byteLength > MAX_BODY_SIZE) {
+		throw error(413, 'Request body too large');
+	}
+
 	// 2. Optional auth
 	let userSub: string | null = null;
 	try {
@@ -70,16 +73,19 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 	const kv = platform?.env?.DIAGRAMS_KV;
 	const identifier = userSub || `ip:${getClientIp(request)}`;
 	const limit = userSub ? AUTH_RATE_LIMIT : ANON_RATE_LIMIT;
-	const { allowed, remaining } = await checkRateLimit(kv, identifier, limit);
+	const { allowed } = await checkRateLimit(kv, identifier, limit);
 
 	if (!allowed) {
-		const res = json({ error: 'Rate limit exceeded' }, { status: 429 });
-		res.headers.set('X-RateLimit-Remaining', '0');
-		return res;
+		return json({ error: 'Rate limit exceeded' }, { status: 429 });
 	}
 
-	// 4. Parse body
-	const body = await request.json();
+	// 4. Parse body (from pre-read text — request.text() already consumed above)
+	let body: any;
+	try {
+		body = JSON.parse(rawText);
+	} catch {
+		throw error(400, 'Invalid JSON');
+	}
 	if (validateBody && !validateBody(body)) {
 		throw error(400, 'ข้อมูลไม่ถูกต้อง');
 	}
@@ -119,11 +125,11 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 				response.status === 429 ? 429 : 502,
 				response.status === 429
 					? 'AI ยุ่งอยู่ ลองใหม่อีกครั้ง'
-					: `AI ทำงานผิดพลาด: ${response.status}`
+					: 'AI ทำงานผิดพลาด กรุณาลองใหม่'
 			);
 		}
 
-		const result = await response.json();
+		const result: any = await response.json();
 		const text = result.choices?.[0]?.message?.content;
 
 		if (!text) {
@@ -144,10 +150,8 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 			parsed = { content: text };
 		}
 
-		// 8. Return with rate limit headers
-		const res = json(parsed);
-		res.headers.set('X-RateLimit-Remaining', String(remaining));
-		return res;
+		// 8. Return response (no rate limit headers exposed)
+		return json(parsed);
 	} catch (err: unknown) {
 		if (err && typeof err === 'object' && 'status' in err) throw err;
 		if (err instanceof DOMException && err.name === 'AbortError') {

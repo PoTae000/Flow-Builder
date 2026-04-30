@@ -27,7 +27,7 @@ function handleCredentialResponse(response: google.accounts.id.CredentialRespons
 	};
 
 	// Store ID token for cloud sync
-	localStorage.setItem('er-diagram:id-token', response.credential);
+	sessionStorage.setItem('er-diagram:id-token', response.credential);
 
 	// Save current guest data before switching
 	session.saveNow();
@@ -42,7 +42,7 @@ function handleCredentialResponse(response: google.accounts.id.CredentialRespons
  */
 export function isTokenValid(): boolean {
 	try {
-		const token = localStorage.getItem('er-diagram:id-token');
+		const token = sessionStorage.getItem('er-diagram:id-token');
 		if (!token) return false;
 		const payload = decodeJwt(token);
 		const exp = payload.exp as number;
@@ -76,7 +76,7 @@ export function refreshToken(): Promise<void> {
 			},
 			auto_select: true
 		});
-		google.accounts.id.prompt((notification: google.accounts.id.PromptMomentNotification) => {
+		google.accounts.id.prompt((notification: any) => {
 			if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
 				clearTimeout(timeout);
 				reject(new Error('Token refresh failed - re-login required'));
@@ -133,7 +133,7 @@ export function triggerSignOut() {
 	session.saveNow();
 
 	// Remove ID token for cloud sync
-	localStorage.removeItem('er-diagram:id-token');
+	sessionStorage.removeItem('er-diagram:id-token');
 
 	if (auth.user?.email) {
 		google.accounts.id.revoke(auth.user.email, () => {});

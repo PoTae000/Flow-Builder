@@ -50,13 +50,22 @@ const USER_COLORS = [
 	'#f472b6', '#e879f9'
 ];
 
-function generateRoomId(): string {
+function generateRandomString(length: number): string {
 	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-	let id = '';
-	for (let i = 0; i < 8; i++) {
-		id += chars[Math.floor(Math.random() * chars.length)];
+	const bytes = crypto.getRandomValues(new Uint8Array(length));
+	let result = '';
+	for (let i = 0; i < length; i++) {
+		result += chars[bytes[i] % chars.length];
 	}
-	return id;
+	return result;
+}
+
+function generateRoomId(): string {
+	return generateRandomString(12);
+}
+
+function generateRoomToken(): string {
+	return generateRandomString(12);
 }
 
 // Lazy import to avoid circular dep — set from +page.svelte
@@ -68,6 +77,7 @@ export function registerSession(s: typeof _session) {
 export class CollabState {
 	connected = $state(false);
 	roomId = $state('');
+	roomToken = $state('');
 	users = $state<CollabUser[]>([]);
 	userName = $state('');
 	userPicture = $state('');
@@ -152,6 +162,7 @@ export class CollabState {
 		if (typeof localStorage !== 'undefined') {
 			safeSave('collab-room', JSON.stringify({
 				roomId: this.roomId,
+				roomToken: this.roomToken,
 				isHost: this.isHost
 			}));
 		}
@@ -170,9 +181,16 @@ export class CollabState {
 		const raw = localStorage.getItem('collab-room');
 		if (!raw) return false;
 		try {
-			const { roomId, isHost } = JSON.parse(raw);
+			const { roomId, roomToken, isHost } = JSON.parse(raw);
 			if (roomId) {
-				this.joinRoom(roomId, isHost);
+				// Legacy rooms saved without token — generate one (host) or clear (joiner)
+				const token = roomToken || (isHost ? generateRoomToken() : '');
+				if (!token) {
+					// Joiner without token can't rejoin — clear stale data
+					localStorage.removeItem('collab-room');
+					return false;
+				}
+				this.joinRoom(roomId, isHost, token);
 				return true;
 			}
 		} catch { /* ignore */ }
@@ -181,13 +199,15 @@ export class CollabState {
 
 	createRoom() {
 		const id = generateRoomId();
+		const token = generateRoomToken();
 		this.isHost = true;
-		this.joinRoom(id, true);
+		this.joinRoom(id, true, token);
 	}
 
-	joinRoom(roomId: string, asHost = false) {
+	joinRoom(roomId: string, asHost = false, token?: string) {
 		this.leaveRoom(true); // silent leave (don't clear diagram)
 		this.roomId = roomId;
+		this.roomToken = token || '';
 		this.isHost = asHost;
 		this._joinedAsHost = asHost;
 
@@ -200,7 +220,9 @@ export class CollabState {
 		this._doc = new Y.Doc();
 
 		const signalingUrl = PUBLIC_SIGNALING_URL || 'wss://signaling.yjs.dev';
-		this._provider = new WebrtcProvider(`er-diagram-${roomId}`, this._doc, {
+		// C1/H5: Topic includes token so only users with the share URL can join
+		const topic = `er-diagram-${roomId}-${this.roomToken}`;
+		this._provider = new WebrtcProvider(topic, this._doc, {
 			signaling: [signalingUrl]
 		});
 
@@ -242,7 +264,7 @@ export class CollabState {
 			// Re-check permission result when users change (disconnect = auto-approve)
 			if (this.permissionRequest && this._permissionResolver &&
 				this.permissionRequest.requesterClientId === this.localClientId) {
-				this.checkPermissionResult(this.permissionRequest, this.permissionVotes);
+				permissions.checkPermissionResult(this, this.permissionRequest, this.permissionVotes);
 			}
 
 			// If the requester disconnected, clear the permission request locally
@@ -643,6 +665,7 @@ export class CollabState {
 		this.synced = false;
 		this.peerCount = 0;
 		this.roomId = '';
+		this.roomToken = '';
 		this.users = [];
 		this.isHost = false;
 		this._joinedAsHost = false;
@@ -1366,6 +1389,9 @@ export class CollabState {
 		if (!this.roomId || typeof window === 'undefined') return '';
 		const url = new URL(window.location.href);
 		url.searchParams.set('room', this.roomId);
+		if (this.roomToken) {
+			url.searchParams.set('token', this.roomToken);
+		}
 		return url.toString();
 	}
 }

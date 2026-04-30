@@ -12,7 +12,7 @@
 			<svg class="h-3.5 w-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 			</svg>
-			<span class="hidden sm:inline text-orange-500">Sync หยุดชั่วครา���</span>
+			<span class="hidden sm:inline text-orange-500">Sync หยุดชั่วคราว</span>
 			<button
 				onclick={() => sync.retrySync()}
 				class="ml-1 px-1.5 py-0.5 rounded text-[9px] bg-orange-500 text-white hover:bg-orange-600 transition-colors"

@@ -53,25 +53,38 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		request,
 		platform,
 		validateBody: (body) => {
-			return body.scenario && body.idealSolution && body.userSolution;
+			if (!body.scenario || !body.idealSolution || !body.userSolution) return false;
+			if (typeof body.scenario !== 'string' || body.scenario.length > 2000) return false;
+			if (Array.isArray(body.requirements)) {
+				if (body.requirements.length > 20) return false;
+				if (body.requirements.some((r: unknown) => typeof r !== 'string' || (r as string).length > 500)) return false;
+			}
+			const idealStr = JSON.stringify(body.idealSolution);
+			const userStr = JSON.stringify(body.userSolution);
+			if (idealStr.length > 10000 || userStr.length > 10000) return false;
+			return true;
 		},
 		buildMessages: (body) => {
 			const { scenario, requirements, idealSolution, userSolution } = body;
+			const safeScenario = String(scenario).slice(0, 2000);
+			const safeReqs = Array.isArray(requirements)
+				? requirements.slice(0, 20).map((r: unknown) => String(r).slice(0, 500))
+				: [];
 			const userMsg = `Grade this student's ER diagram solution.
 
 SCENARIO:
-${scenario}
+${safeScenario}
 
 REQUIREMENTS:
-${(requirements || []).map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')}
+${safeReqs.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')}
 
 IDEAL SOLUTION:
-Entities: ${JSON.stringify(idealSolution.entities)}
-Relationships: ${JSON.stringify(idealSolution.relationships)}
+Entities: ${JSON.stringify(idealSolution.entities).slice(0, 10000)}
+Relationships: ${JSON.stringify(idealSolution.relationships).slice(0, 10000)}
 
 STUDENT'S SOLUTION:
-Entities: ${JSON.stringify(userSolution.entities)}
-Relationships: ${JSON.stringify(userSolution.relationships)}`;
+Entities: ${JSON.stringify(userSolution.entities).slice(0, 10000)}
+Relationships: ${JSON.stringify(userSolution.relationships).slice(0, 10000)}`;
 
 			return [
 				{ role: 'system', content: GRADE_PROMPT },

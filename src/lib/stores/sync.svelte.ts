@@ -15,6 +15,9 @@ class SyncState {
 	private pollTrigger: (() => void) | null = null;
 	private canPollFn: (() => boolean) | null = null;
 
+	// Token refresh lock to prevent concurrent refreshes
+	private refreshPromise: Promise<void> | null = null;
+
 	// Version-based polling state
 	private lastKnownVersion = 0;
 	private lastPushedVersion = 0;
@@ -42,13 +45,13 @@ class SyncState {
 		if (err instanceof Error) {
 			const msg = err.message.toLowerCase();
 			if (msg.includes('token expired') || msg.includes('no auth token') || msg.includes('sign in')) {
-				return 'Token หมดอายุ — กรุณา Sign in ใหม่';
+				return 'Session expired — please sign in again / เซสชันหมดอายุ กรุณา Sign in ใหม่';
 			}
 			if (msg.includes('limit exceeded')) {
-				return 'KV quota เต็ม — ลองใหม่พรุ่งนี้';
+				return 'Storage quota reached — try again tomorrow / พื้นที่เต็ม ลองใหม่พรุ่งนี้';
 			}
 		}
-		return 'Sync failed';
+		return 'Sync failed / ซิงค์ไม่สำเร็จ';
 	}
 
 	/** Immediately pause sync due to fatal error */
@@ -82,7 +85,7 @@ class SyncState {
 
 	private getToken(): string | null {
 		try {
-			return localStorage.getItem('er-diagram:id-token');
+			return sessionStorage.getItem('er-diagram:id-token');
 		} catch {
 			return null;
 		}
@@ -101,8 +104,12 @@ class SyncState {
 		// Check token validity before making request; try refresh if expired
 		const { isTokenValid, refreshToken } = await import('$lib/utils/google-auth');
 		if (!isTokenValid()) {
+			// Use lock to prevent concurrent refresh attempts
+			if (!this.refreshPromise) {
+				this.refreshPromise = refreshToken().finally(() => { this.refreshPromise = null; });
+			}
 			try {
-				await refreshToken();
+				await this.refreshPromise;
 			} catch {
 				throw new Error('Token expired - please sign in again');
 			}
@@ -463,10 +470,10 @@ class SyncState {
 
 	/**
 	 * Start periodic version polling for cloud sync.
-	 * Polls lightweight /api/sync/version every 3s.
+	 * Polls lightweight /api/sync/version every 30s.
 	 * Only triggers full sync when version changes AND isn't our own push.
 	 */
-	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 60_000) {
+	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 30_000) {
 		this.pollTrigger = triggerSync;
 		this.canPollFn = canPoll;
 		this.stopPolling();

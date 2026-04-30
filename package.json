@@ -22,7 +22,9 @@
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@tailwindcss/vite": "^4.2.2",
+		"@types/canvas-confetti": "^1.9.0",
 		"@types/node": "^24",
+		"@types/ws": "^8.18.1",
 		"eslint": "^10.2.0",
 		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^17.4.0",
@@ -39,6 +41,8 @@
 		"wrangler": "^4.81.0"
 	},
 	"dependencies": {
+		"canvas-confetti": "^1.9.4",
+		"cookie": "^1.1.1",
 		"jspdf": "^4.2.1",
 		"y-webrtc": "^10.3.0",
 		"yjs": "^13.6.30"

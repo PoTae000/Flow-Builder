@@ -6,14 +6,15 @@ import { snap } from './collab-utils';
  */
 export function pushChatMessage(collab: CollabState, msg: ChatMessage) {
 	if (!collab._doc) return;
-	const yChat = collab._doc.getArray('chat');
 	collab._suppressChatSync = true;
 	try {
-		yChat.push([snap(msg)]);
+		collab._doc.transact(() => {
+			collab._doc!.getArray('chat').push([snap(msg)]);
+		});
 	} finally {
 		collab._suppressChatSync = false;
 	}
-	collab.chatMessages = yChat.toArray() as ChatMessage[];
+	collab.chatMessages = collab._doc.getArray('chat').toArray() as ChatMessage[];
 }
 
 /**

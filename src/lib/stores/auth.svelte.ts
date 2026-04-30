@@ -29,7 +29,9 @@ class AuthState {
 
 	signIn(profile: UserProfile) {
 		this.user = profile;
-		safeSave(STORAGE_KEY, JSON.stringify(profile));
+		// Omit email from localStorage persist — only store sub, name, picture
+		const { sub, name, picture } = profile;
+		safeSave(STORAGE_KEY, JSON.stringify({ sub, name, picture }));
 	}
 
 	signOut() {

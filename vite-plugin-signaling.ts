@@ -51,7 +51,7 @@ export function signalingServer(): Plugin {
 			clearInterval(pingInterval);
 		});
 
-		conn.on('message', (raw) => {
+		conn.on('message', (raw: import('ws').RawData) => {
 			let message: any;
 			try {
 				message = JSON.parse(typeof raw === 'string' ? raw : raw.toString());

@@ -1,5 +1,6 @@
 <script lang="ts">
 	let { value }: { value: number } = $props();
+	// svelte-ignore state_referenced_locally — intentional: $effect handles reactive updates
 	let displayed = $state(value);
 	let rafId = 0;
 

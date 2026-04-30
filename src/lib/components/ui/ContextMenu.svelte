@@ -136,8 +136,13 @@
 		text-align: left;
 	}
 
+	.context-menu-item {
+		transition: background-color 0.1s ease, padding-left 0.1s ease;
+	}
+
 	.context-menu-item:hover {
 		background: var(--ui-hover);
+		padding-left: 18px;
 	}
 
 	.context-menu-item.danger {

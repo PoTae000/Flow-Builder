@@ -23,14 +23,14 @@ export const DELETE: RequestHandler = async ({ request, platform, params }) => {
 	// Remove from meta list
 	const metaRaw = await kv.get(`user:${sub}:diagrams`);
 	if (metaRaw) {
-		const metas = JSON.parse(metaRaw) as Array<{ id: string }>;
+		let metas: Array<{ id: string }>;
+		try { metas = JSON.parse(metaRaw); } catch { metas = []; }
 		const filtered = metas.filter((m) => m.id !== diagramId);
 		await kv.put(`user:${sub}:diagrams`, JSON.stringify(filtered));
 	}
 
-	// Bump version counter
-	const versionRaw = await kv.get(`user:${sub}:version`);
-	const newVersion = (versionRaw ? parseInt(versionRaw, 10) : 0) + 1;
+	// Bump version counter using Date.now() to avoid read-increment-write race
+	const newVersion = Date.now();
 	await kv.put(`user:${sub}:version`, String(newVersion));
 
 	return withRateLimitHeaders(json({ ok: true, version: newVersion }), remaining);

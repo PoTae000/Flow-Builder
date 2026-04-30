@@ -70,8 +70,8 @@
 		to { opacity: 1; }
 	}
 	@keyframes dialogSlideIn {
-		from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
-		to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+		from { opacity: 0; scale: 0.95; }
+		to { opacity: 1; scale: 1; }
 	}
 	.dialog-backdrop {
 		animation: backdropFadeIn 0.15s ease-out;

@@ -43,6 +43,9 @@ export class DiagramState {
 	selectedNodeIds = $state<string[]>([]);
 	selectedEdgeId = $state<string | null>(null);
 
+	// O(1) lookup Set derived from selectedNodeIds — use in hot render paths
+	selectedNodeIdSet = $derived(new Set(this.selectedNodeIds));
+
 	// Derived: single selected node ID (for form panel compat)
 	selectedEntityId = $derived(
 		this.selectedNodeIds.length === 1 ? this.selectedNodeIds[0] : null
@@ -56,6 +59,9 @@ export class DiagramState {
 	panY = $state(0);
 	zoom = $state(1);
 
+	// View bookmarks (1-9 keyboard shortcuts)
+	bookmarks = $state<Map<number, { panX: number; panY: number; zoom: number }>>(new Map());
+
 	// Actual canvas dimensions (updated by DiagramCanvas on mount/resize)
 	canvasWidth = $state(0);
 	canvasHeight = $state(0);
@@ -65,7 +71,14 @@ export class DiagramState {
 	private historyLabels: string[] = [];
 	private future: string[] = [];
 	private futureLabels: string[] = [];
-	private maxHistory = 20;
+	private get maxHistory(): number {
+		// Scale undo history depth based on diagram size to limit memory usage
+		// Large diagrams (~500 entities) produce ~500KB snapshots, so fewer steps
+		const totalItems = this.entities.length + this.flowNodes.length + this.dfdNodes.length;
+		if (totalItems > 200) return 8;
+		if (totalItems > 100) return 12;
+		return 20;
+	}
 
 	// Clipboard for copy/paste
 	private clipboard: string | null = null;
@@ -298,6 +311,21 @@ export class DiagramState {
 					y: Math.round(position.y / 20) * 20
 				};
 			}
+
+			// Chen notation: offset attribute positions when entity moves
+			if (this.notation === 'chen' && entity.attributes.some(a => a.position)) {
+				const dx = position.x - entity.position.x;
+				const dy = position.y - entity.position.y;
+				for (const attr of entity.attributes) {
+					if (attr.position) {
+						attr.position = {
+							x: attr.position.x + dx,
+							y: attr.position.y + dy
+						};
+					}
+				}
+			}
+
 			entity.position = position;
 			getCollab()?.pushEntityChange(entity);
 		}
@@ -352,6 +380,20 @@ export class DiagramState {
 		this.pushHistory();
 		const attrs = [...entity.attributes];
 		[attrs[idx], attrs[newIdx]] = [attrs[newIdx], attrs[idx]];
+		entity.attributes = attrs;
+		getCollab()?.pushEntityChange(entity);
+	}
+
+	reorderAttribute(entityId: string, fromAttrId: string, toAttrId: string) {
+		const entity = this.entities.find((e) => e.id === entityId);
+		if (!entity) return;
+		const fromIdx = entity.attributes.findIndex((a) => a.id === fromAttrId);
+		const toIdx = entity.attributes.findIndex((a) => a.id === toAttrId);
+		if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+		this.pushHistory();
+		const attrs = [...entity.attributes];
+		const [moved] = attrs.splice(fromIdx, 1);
+		attrs.splice(toIdx, 0, moved);
 		entity.attributes = attrs;
 		getCollab()?.pushEntityChange(entity);
 	}
@@ -444,6 +486,38 @@ export class DiagramState {
 		this.smoothTransition = true;
 		this.fitToContent(containerW, containerH);
 		setTimeout(() => { this.smoothTransition = false; }, 300);
+	}
+
+	/**
+	 * Save current view to a bookmark slot (1-9)
+	 */
+	saveBookmark(slot: number) {
+		if (slot < 1 || slot > 9) return;
+		this.bookmarks.set(slot, {
+			panX: this.panX,
+			panY: this.panY,
+			zoom: this.zoom
+		});
+	}
+
+	/**
+	 * Load view from a bookmark slot (1-9)
+	 * Returns true if bookmark exists, false otherwise
+	 */
+	loadBookmark(slot: number): boolean {
+		if (slot < 1 || slot > 9) return false;
+		const bookmark = this.bookmarks.get(slot);
+		if (!bookmark) return false;
+
+		this.smoothTransition = true;
+		this.panX = bookmark.panX;
+		this.panY = bookmark.panY;
+		this.zoom = bookmark.zoom;
+		setTimeout(() => {
+			this.smoothTransition = false;
+		}, 300);
+
+		return true;
 	}
 
 	/** Adjust pan & zoom so all content fits within the given container size. */
@@ -556,8 +630,9 @@ export class DiagramState {
 	private estimateEntitySpace(entity: Entity): { w: number; h: number } {
 		const box = this.estimateEntityBox(entity);
 		if (this.notation === 'chen' && entity.attributes.length > 0) {
-			// Add oval space: 90px distance + 38px radius
-			return { w: box.w + 200, h: box.h + 200 };
+			// ovals distributed around full circle — reserve ~oval distance per side
+			const extra = 120;
+			return { w: box.w + extra, h: box.h + extra };
 		}
 		return box;
 	}
@@ -645,9 +720,10 @@ export class DiagramState {
 		}
 
 		const positions = new Map<string, { x: number; y: number }>();
-		// Gap between entities — enough room for relationship labels between rows
-		const GAP_X = 100;
-		const GAP_Y = 150;
+		// Gap between entities — Chen needs more room for oval clouds
+		const isChen = this.notation === 'chen';
+		const GAP_X = isChen ? 100 : 100;
+		const GAP_Y = isChen ? 120 : 150;
 		let componentOffsetY = 0;
 
 		for (const component of components) {
@@ -741,7 +817,7 @@ export class DiagramState {
 
 		// === OVERLAP RESOLUTION using full entity space (includes ovals) ===
 		const entityIds = this.entities.map((e) => e.id);
-		const PAD = 30;
+		const PAD = isChen ? 50 : 30;
 
 		const layoutStartTime = Date.now();
 		const LAYOUT_TIMEOUT_MS = 5000; // max 5 seconds for entire layout
@@ -991,6 +1067,16 @@ export class DiagramState {
 		}
 
 		this.pushHistory('Auto layout');
+
+		// Reset Chen attribute positions to auto-calculate
+		if (this.notation === 'chen') {
+			for (const entity of this.entities) {
+				for (const attr of entity.attributes) {
+					delete attr.position;
+				}
+			}
+		}
+
 		this.animating = true;
 
 		const startTime = performance.now();
@@ -1051,7 +1137,7 @@ export class DiagramState {
 	}
 
 	toggleEntitySelection(id: string) {
-		if (this.selectedNodeIds.includes(id)) {
+		if (this.selectedNodeIdSet.has(id)) {
 			this.selectedNodeIds = this.selectedNodeIds.filter((eid) => eid !== id);
 		} else {
 			this.selectedNodeIds = [...this.selectedNodeIds, id];
@@ -1076,7 +1162,7 @@ export class DiagramState {
 
 	copySelected() {
 		if (this.selectedNodeIds.length === 0) return;
-		const ents = this.entities.filter((e) => this.selectedNodeIds.includes(e.id));
+		const ents = this.entities.filter((e) => this.selectedNodeIdSet.has(e.id));
 		this.clipboard = JSON.stringify(ents);
 	}
 
@@ -1211,13 +1297,14 @@ export class DiagramState {
 		return node;
 	}
 
-	updateFlowNode(id: string, updates: Partial<Pick<FlowNode, 'name' | 'type' | 'color'>>) {
+	updateFlowNode(id: string, updates: Partial<Pick<FlowNode, 'name' | 'type' | 'color' | 'borderRadius'>>) {
 		const node = this.flowNodes.find((n) => n.id === id);
 		if (!node) return;
 		this.pushHistory();
 		if (updates.name !== undefined) node.name = updates.name;
 		if (updates.type !== undefined) node.type = updates.type;
 		if (updates.color !== undefined) node.color = updates.color;
+		if (updates.borderRadius !== undefined) node.borderRadius = updates.borderRadius;
 		getCollab()?.pushFlowNodeChange(node);
 	}
 

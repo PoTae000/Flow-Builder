@@ -13,23 +13,30 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 	const { sub, remaining } = await authenticateAndRateLimit(request, platform);
 
-	const body = await request.json();
-	const { ids } = body as { ids: string[] };
+	const body: any = await request.json();
+	const ids = body?.ids;
 
-	if (!Array.isArray(ids)) throw error(400, 'Invalid request body');
+	if (!Array.isArray(ids) || !ids.every((id: unknown) => typeof id === 'string')) {
+		throw error(400, 'Invalid request body: ids must be a string array');
+	}
 
 	if (ids.length > MAX_IDS_PER_PULL) {
 		throw error(400, `Too many IDs: max ${MAX_IDS_PER_PULL} per pull`);
 	}
 
 	// Filter out invalid IDs silently (read operation)
-	const validIds = ids.filter((id) => isValidDiagramId(id));
+	const validIds = ids.filter((id: string) => isValidDiagramId(id));
 
-	// Fetch all requested diagram data in parallel
+	// Fetch all requested diagram data in parallel — handle per-entry errors
 	const entries = await Promise.all(
-		validIds.map(async (id) => {
-			const raw = await kv.get(`user:${sub}:diagram:${id}`);
-			return [id, raw ? JSON.parse(raw) : null] as const;
+		validIds.map(async (id: string) => {
+			try {
+				const raw = await kv.get(`user:${sub}:diagram:${id}`);
+				return [id, raw ? JSON.parse(raw) : null] as const;
+			} catch {
+				// Skip corrupted entries instead of crashing the entire request
+				return [id, null] as const;
+			}
 		})
 	);
 

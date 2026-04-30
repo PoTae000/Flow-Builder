@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types';
 import { aiRequest } from '$lib/server/ai-request';
+import { sanitizeName } from '$lib/utils/sanitize';
 
 const QUIZ_PROMPT = `You are an expert database design instructor. Generate an ER diagram quiz question.
 
@@ -55,7 +56,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			const { difficulty, domain } = body;
 			let userMsg = `Generate a ${difficulty} difficulty ER diagram quiz question.`;
 			if (domain) {
-				userMsg += ` The scenario should be related to: ${domain}`;
+				userMsg += ` The scenario should be related to: ${sanitizeName(String(domain), 200)}`;
 			}
 			return [
 				{ role: 'system', content: QUIZ_PROMPT },

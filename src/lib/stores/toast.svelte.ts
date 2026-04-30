@@ -4,6 +4,7 @@ interface Toast {
 	id: string;
 	message: string;
 	type: ToastType;
+	exiting?: boolean;
 }
 
 class ToastState {
@@ -16,7 +17,13 @@ class ToastState {
 	}
 
 	dismiss(id: string) {
-		this.toasts = this.toasts.filter((t) => t.id !== id);
+		const t = this.toasts.find((t) => t.id === id);
+		if (!t || t.exiting) return;
+		t.exiting = true;
+		// Wait for exit animation to complete before removing
+		setTimeout(() => {
+			this.toasts = this.toasts.filter((t) => t.id !== id);
+		}, 200);
 	}
 
 	success(msg: string) { this.push(msg, 'success'); }

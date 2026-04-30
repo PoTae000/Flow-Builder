@@ -43,12 +43,12 @@
 			});
 
 			if (!res.ok) {
-				const errData = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาด' }));
+				const errData: any = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาด' }));
 				errorMsg = errData.message || `Error ${res.status}`;
 				return;
 			}
 
-			const data = await res.json();
+			const data: any = await res.json();
 			generatedCode = data.code;
 		} catch {
 			errorMsg = 'เชื่อมต่อไม่ได้ ลองใหม่';
@@ -121,6 +121,24 @@
 					สร้างโค้ด {languages.find((l) => l.id === selectedLang)?.label}
 				{/if}
 			</button>
+		{/if}
+
+		<!-- Skeleton code block while loading -->
+		{#if loading}
+			<div class="mt-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-4">
+				<div class="flex flex-col gap-2">
+					<div class="skeleton h-3 w-3/4"></div>
+					<div class="skeleton h-3 w-full"></div>
+					<div class="skeleton h-3 w-5/6"></div>
+					<div class="skeleton h-3 w-2/3"></div>
+					<div class="skeleton h-3 w-full"></div>
+					<div class="skeleton h-3 w-4/5"></div>
+					<div class="skeleton h-3 w-1/2"></div>
+					<div class="skeleton h-3 w-full"></div>
+					<div class="skeleton h-3 w-3/5"></div>
+					<div class="skeleton h-3 w-2/5"></div>
+				</div>
+			</div>
 		{/if}
 
 		<!-- Error -->

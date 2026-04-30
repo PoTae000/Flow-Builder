@@ -81,6 +81,13 @@
 <style>
 	.tabs-scroll::-webkit-scrollbar { display: none; }
 	.tabs-scroll { scrollbar-width: none; }
+	@keyframes tabActivate {
+		from { opacity: 0.6; transform: translateY(1px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+	.tab-active-anim {
+		animation: tabActivate 0.15s ease-out;
+	}
 </style>
 
 <div class="flex h-11 items-center border-b border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)]">
@@ -96,8 +103,8 @@
 			{@const isActive = tab.id === session.activeDiagramId}
 			<div
 				data-tab-id={tab.id}
-				class="group flex h-7 min-w-16 max-w-48 shrink items-center rounded-t {isActive
-					? 'bg-[var(--ui-bg)] border-x border-t border-[var(--ui-border-light)]'
+				class="group flex h-7 min-w-16 max-w-48 shrink items-center rounded-t transition-all duration-200 {isActive
+					? 'bg-[var(--ui-bg)] border-x border-t border-[var(--ui-border-light)] shadow-sm'
 					: 'hover:bg-[var(--ui-hover)]'} cursor-pointer"
 			>
 				{#if editingId === tab.id}
@@ -111,8 +118,8 @@
 				{:else}
 					<button
 						type="button"
-						class="truncate border-none bg-transparent px-2.5 text-xs {isActive
-							? 'text-[var(--ui-text)] font-normal'
+						class="truncate border-none bg-transparent px-2.5 text-xs transition-colors duration-200 {isActive
+							? 'text-[var(--ui-text)] font-normal tab-active-anim'
 							: 'text-[var(--ui-text-muted)] font-light'} cursor-pointer outline-none"
 						onclick={() => { if (!collab.connected) session.switchDiagram(tab.id); }}
 						ondblclick={() => { if (!collab.connected) startRename(tab.id, tab.name); }}

@@ -30,7 +30,7 @@
 	async function checkAi() {
 		try {
 			const res = await fetch('/api/import/check');
-			const data = await res.json();
+			const data: any = await res.json();
 			aiAvailable = data.available;
 		} catch {
 			aiAvailable = false;
@@ -60,7 +60,7 @@
 			});
 
 			if (!res.ok) {
-				const errData = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาดจาก AI' }));
+				const errData: any = await res.json().catch(() => ({ message: 'เกิดข้อผิดพลาดจาก AI' }));
 				throw new Error(errData.message || `Error: ${res.status}`);
 			}
 
@@ -117,7 +117,7 @@
 		</h2>
 		<button
 			onclick={onclose}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label="ปิด"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

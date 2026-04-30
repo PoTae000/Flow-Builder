@@ -55,7 +55,18 @@
 	}
 
 	import { diagram } from '$lib/stores/diagram.svelte';
-	import { convertAiDataToDiagram, type AiParsedData } from '$lib/utils/import-adapter';
+	import {
+		convertAiDataToDiagram,
+		convertAiFlowchartToDiagram,
+		convertAiDFDToDiagram,
+		type AiParsedData,
+		type AiParsedFlowchart,
+		type AiParsedDFD
+	} from '$lib/utils/import-adapter';
+
+	// Prefetch confetti module on mount
+	let confettiModule: any = null;
+	import('canvas-confetti').then((mod) => { confettiModule = mod; });
 
 	function cancelRequest() {
 		cancelled = true;
@@ -81,13 +92,33 @@
 		const timeout = setTimeout(() => abortController?.abort(), 30000);
 
 		try {
+			// Build type-aware request body
+			let body: any;
+
+			if (diagram.diagramType === 'er') {
+				body = {
+					diagramType: 'er',
+					entities: $state.snapshot(diagram.entities),
+					relationships: $state.snapshot(diagram.relationships)
+				};
+			} else if (diagram.diagramType === 'flowchart') {
+				body = {
+					diagramType: 'flowchart',
+					flowNodes: $state.snapshot(diagram.flowNodes),
+					flowEdges: $state.snapshot(diagram.flowEdges)
+				};
+			} else {
+				body = {
+					diagramType: 'context',
+					dfdNodes: $state.snapshot(diagram.dfdNodes),
+					dfdFlows: $state.snapshot(diagram.dfdFlows)
+				};
+			}
+
 			const res = await fetch('/api/analyze', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					entities: $state.snapshot(diagram.entities),
-					relationships: $state.snapshot(diagram.relationships)
-				}),
+				body: JSON.stringify(body),
 				signal: abortController.signal
 			});
 
@@ -99,7 +130,7 @@
 			}
 
 			if (!res.ok) {
-				const errData = await res.json().catch(() => ({ message: 'วิเคราะห์ไม่สำเร็จ' }));
+				const errData: any = await res.json().catch(() => ({ message: 'วิเคราะห์ไม่สำเร็จ' }));
 				throw new Error(errData.message || `Error: ${res.status}`);
 			}
 
@@ -131,14 +162,36 @@
 		const timeout = setTimeout(() => abortController?.abort(), 30000);
 
 		try {
-			const res = await fetch('/api/fix', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
+			// Build type-aware request body
+			let body: any;
+
+			if (diagram.diagramType === 'er') {
+				body = {
+					diagramType: 'er',
 					entities: $state.snapshot(diagram.entities),
 					relationships: $state.snapshot(diagram.relationships),
 					issues: result.issues
-				}),
+				};
+			} else if (diagram.diagramType === 'flowchart') {
+				body = {
+					diagramType: 'flowchart',
+					flowNodes: $state.snapshot(diagram.flowNodes),
+					flowEdges: $state.snapshot(diagram.flowEdges),
+					issues: result.issues
+				};
+			} else {
+				body = {
+					diagramType: 'context',
+					dfdNodes: $state.snapshot(diagram.dfdNodes),
+					dfdFlows: $state.snapshot(diagram.dfdFlows),
+					issues: result.issues
+				};
+			}
+
+			const res = await fetch('/api/fix', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
 				signal: abortController.signal
 			});
 
@@ -150,21 +203,34 @@
 			}
 
 			if (!res.ok) {
-				const errData = await res.json().catch(() => ({ message: 'แก้ไม่สำเร็จ' }));
+				const errData: any = await res.json().catch(() => ({ message: 'แก้ไม่สำเร็จ' }));
 				throw new Error(errData.message || `Error: ${res.status}`);
 			}
 
-			let aiData: AiParsedData;
+			let aiData: any;
 			try {
 				aiData = await res.json();
 			} catch {
 				throw new Error('AI ส่งข้อมูลกลับมาไม่ถูกต้อง ลองใหม่อีกครั้ง');
 			}
-			const converted = convertAiDataToDiagram(aiData);
 
 			diagram.pushHistory();
-			diagram.entities = converted.entities;
-			diagram.relationships = converted.relationships;
+
+			// Convert and apply based on diagram type
+			if (diagram.diagramType === 'er') {
+				const converted = convertAiDataToDiagram(aiData as AiParsedData);
+				diagram.entities = converted.entities;
+				diagram.relationships = converted.relationships;
+			} else if (diagram.diagramType === 'flowchart') {
+				const converted = convertAiFlowchartToDiagram(aiData as AiParsedFlowchart);
+				diagram.flowNodes = converted.flowNodes;
+				diagram.flowEdges = converted.flowEdges;
+			} else {
+				const converted = convertAiDFDToDiagram(aiData as AiParsedDFD);
+				diagram.dfdNodes = converted.dfdNodes;
+				diagram.dfdFlows = converted.dfdFlows;
+			}
+
 			diagram.autoLayout();
 
 			// Re-analyze to show new result
@@ -181,6 +247,18 @@
 			abortController = null;
 		}
 	}
+
+	// Confetti on high score
+	$effect(() => {
+		if (result && result.score >= 90 && !loading && !fixing) {
+			const opts = { particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#22c55e', '#eab308', '#10b981', '#facc15'] };
+			if (confettiModule) {
+				confettiModule.default(opts);
+			} else {
+				import('canvas-confetti').then((mod) => { mod.default(opts); });
+			}
+		}
+	});
 
 	// Start analysis on mount
 	analyze();
@@ -247,7 +325,7 @@
 		</div>
 		<button
 			onclick={onclose}
-			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90"
 			aria-label="ปิด"
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -257,18 +335,38 @@
 	<!-- Content -->
 	<div class="flex-1 overflow-y-auto p-5">
 		{#if loading || fixing}
-			<div class="flex flex-col items-center justify-center gap-3 py-16">
-				<svg class="h-8 w-8 animate-spin text-[var(--ui-text-muted)]" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-				</svg>
-				<span class="text-xs text-[var(--ui-text-muted)]">{fixing ? 'AI กำลังแก้ให้...' : loadingMessages[loadingMsgIndex]}</span>
-				<button
-					onclick={cancelRequest}
-					class="rounded border border-[var(--ui-border)] px-3 py-1.5 text-xs text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
-				>
-					ยกเลิก
-				</button>
+			<div class="flex flex-col gap-4 py-4">
+				<!-- Skeleton score card -->
+				<div class="flex flex-col items-center gap-2 rounded-lg border border-[var(--ui-border-light)] p-4">
+					<div class="skeleton h-8 w-20"></div>
+					<div class="skeleton h-3 w-32"></div>
+				</div>
+				<!-- Skeleton summary box -->
+				<div class="rounded border border-[var(--ui-border-light)] p-3">
+					<div class="skeleton mb-2 h-3 w-16"></div>
+					<div class="skeleton mb-1.5 h-3 w-full"></div>
+					<div class="skeleton h-3 w-3/4"></div>
+				</div>
+				<!-- Skeleton issue rows -->
+				{#each [1, 2, 3] as _}
+					<div class="flex items-start gap-2.5 rounded-lg border border-[var(--ui-border-light)] p-3">
+						<div class="skeleton mt-0.5 h-5 w-5 shrink-0 !rounded-full"></div>
+						<div class="flex-1">
+							<div class="skeleton mb-1.5 h-3 w-2/3"></div>
+							<div class="skeleton h-3 w-full"></div>
+						</div>
+					</div>
+				{/each}
+				<!-- Loading message + cancel -->
+				<div class="flex flex-col items-center gap-2 pt-2">
+					<span class="text-xs text-[var(--ui-text-muted)]">{fixing ? 'AI กำลังแก้ให้...' : loadingMessages[loadingMsgIndex]}</span>
+					<button
+						onclick={cancelRequest}
+						class="rounded border border-[var(--ui-border)] px-3 py-1.5 text-xs text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+					>
+						ยกเลิก
+					</button>
+				</div>
 			</div>
 		{:else if cancelled}
 			<div class="flex flex-col items-center gap-3 py-16">
