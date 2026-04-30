@@ -110,10 +110,42 @@
 		return { x: (pts[mi - 1].x + pts[mi].x) / 2, y: (pts[mi - 1].y + pts[mi].y) / 2 };
 	});
 
-	// Condition badge near fromNode (on first segment)
-	const badgePos = $derived({
-		x: (route[0].x + route[1].x) / 2,
-		y: (route[0].y + route[1].y) / 2
+	// Condition label position (near decision node, to the side of the edge)
+	const conditionPos = $derived.by(() => {
+		if (!edge.condition) return { x: 0, y: 0 };
+
+		const start = route[0];
+		const second = route[1];
+
+		// Determine edge direction from decision node
+		const isVertical = Math.abs(second.y - start.y) > Math.abs(second.x - start.x);
+		const goesRight = second.x > start.x;
+		const goesLeft = second.x < start.x;
+		const goesDown = second.y > start.y;
+		const goesUp = second.y < start.y;
+
+		let x = start.x;
+		let y = start.y;
+
+		if (isVertical) {
+			// Vertical edge: position label to the side
+			if (goesDown || goesUp) {
+				// Position yes to the left, no to the right
+				x = edge.condition === 'yes' ? start.x - 15 : start.x + 15;
+				y = (start.y + second.y) / 2;
+			}
+		} else {
+			// Horizontal edge: position label above the line
+			if (goesRight) {
+				x = start.x + 20;
+				y = start.y - 12;
+			} else if (goesLeft) {
+				x = start.x - 20;
+				y = start.y - 12;
+			}
+		}
+
+		return { x, y };
 	});
 </script>
 
@@ -145,8 +177,8 @@
 	{#if edge.condition}
 		{@const text = edge.condition === 'yes' ? 'yes' : 'no'}
 		<text
-			x={badgePos.x}
-			y={badgePos.y}
+			x={conditionPos.x}
+			y={conditionPos.y}
 			text-anchor="middle"
 			dominant-baseline="middle"
 			fill={colors.relationshipText}
