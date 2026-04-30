@@ -52,20 +52,21 @@
 	const route = $derived.by(() => {
 		const dx = toNode.position.x - fromNode.position.x;
 		const dy = toNode.position.y - fromNode.position.y;
+		const absDx = Math.abs(dx);
 
 		// Determine connection sides based on flowchart conventions:
+		// - Decision nodes can only exit from left, right, or bottom (NOT top)
 		// - Prefer top-to-bottom flow (arrow points down)
 		// - Use left-to-right for horizontal flow (arrow points right)
-		// - Only use upward flow for loops (arrow points up)
 
 		let fromSide: 'top' | 'bottom' | 'left' | 'right';
 		let toSide: 'top' | 'bottom' | 'left' | 'right';
 
-		// Check if this is a loop (target is above source)
+		const isDecision = fromNode.type === 'decision';
 		const isLoop = dy < -NODE_H;
 
-		if (isLoop) {
-			// Loop: route around the side
+		if (isLoop && !isDecision) {
+			// Loop: route around the side (only for non-decision nodes)
 			const useRight = dx >= 0;
 			fromSide = useRight ? 'right' : 'left';
 			toSide = useRight ? 'right' : 'left';
@@ -82,23 +83,41 @@
 			];
 		}
 
-		// Normal flow: prefer downward (top-to-bottom)
-		if (dy > 0) {
-			// Target is below: use top-to-bottom flow (arrow points down)
-			fromSide = 'bottom';
-			toSide = 'top';
+		// For decision nodes: only exit from left, right, or bottom
+		if (isDecision) {
+			// Determine which side to exit based on target position
+			if (absDx > 30) {
+				// Target is significantly to the side: use left/right
+				fromSide = dx > 0 ? 'right' : 'left';
+				toSide = dy > 0 ? 'top' : 'bottom';
+			} else {
+				// Target is mostly below: use bottom
+				fromSide = 'bottom';
+				toSide = 'top';
+			}
 		} else {
-			// Target is at same level or slightly above: use horizontal flow
-			fromSide = dx > 0 ? 'right' : 'left';
-			toSide = dx > 0 ? 'left' : 'right';
+			// Normal nodes: prefer downward flow
+			if (dy > 0) {
+				// Target is below: use top-to-bottom flow
+				fromSide = 'bottom';
+				toSide = 'top';
+			} else if (dy < 0) {
+				// Target is above: use bottom-to-top (unusual but allowed)
+				fromSide = 'top';
+				toSide = 'bottom';
+			} else {
+				// Same level: use horizontal flow
+				fromSide = dx > 0 ? 'right' : 'left';
+				toSide = dx > 0 ? 'left' : 'right';
+			}
 		}
 
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
 		// Create orthogonal path
-		if (fromSide === 'bottom') {
-			// Top-to-bottom: go down, then horizontal, then down (arrow points DOWN)
+		if (fromSide === 'top' || fromSide === 'bottom') {
+			// Vertical exit: go vertical first, then horizontal, then vertical
 			const midY = (fp.y + tp.y) / 2 + offset;
 			return [
 				fp,
@@ -107,7 +126,7 @@
 				tp
 			];
 		} else {
-			// Left-to-right: go horizontal, then down, then horizontal (arrow points RIGHT)
+			// Horizontal exit: go horizontal first, then vertical, then horizontal
 			const midX = (fp.x + tp.x) / 2 + offset;
 			return [
 				fp,
@@ -132,42 +151,15 @@
 		return { x: (pts[mi - 1].x + pts[mi].x) / 2, y: (pts[mi - 1].y + pts[mi].y) / 2 };
 	});
 
-	// Condition label position (near decision node, to the side of the edge)
+	// Condition label position (center of the edge line)
 	const conditionPos = $derived.by(() => {
-		if (!edge.condition) return { x: 0, y: 0 };
-
-		const start = route[0];
-		const second = route[1];
-
-		// Determine edge direction from decision node
-		const isVertical = Math.abs(second.y - start.y) > Math.abs(second.x - start.x);
-		const goesRight = second.x > start.x;
-		const goesLeft = second.x < start.x;
-		const goesDown = second.y > start.y;
-		const goesUp = second.y < start.y;
-
-		let x = start.x;
-		let y = start.y;
-
-		if (isVertical) {
-			// Vertical edge: position label to the side
-			if (goesDown || goesUp) {
-				// Position yes to the left, no to the right
-				x = edge.condition === 'yes' ? start.x - 15 : start.x + 15;
-				y = (start.y + second.y) / 2;
-			}
-		} else {
-			// Horizontal edge: position label above the line
-			if (goesRight) {
-				x = start.x + 20;
-				y = start.y - 12;
-			} else if (goesLeft) {
-				x = start.x - 20;
-				y = start.y - 12;
-			}
+		const pts = route;
+		if (pts.length === 2) {
+			return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
 		}
-
-		return { x, y };
+		// Position at the middle of the path
+		const mi = Math.floor(pts.length / 2);
+		return { x: (pts[mi - 1].x + pts[mi].x) / 2, y: (pts[mi - 1].y + pts[mi].y) / 2 };
 	});
 </script>
 
