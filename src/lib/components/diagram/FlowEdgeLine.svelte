@@ -115,44 +115,25 @@
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Create orthogonal path with offset maintained throughout
-		// Offset keeps parallel edges separated in the middle segments
-		if ((fromSide === 'left' || fromSide === 'right') && (toSide === 'top' || toSide === 'bottom')) {
-			// Exit horizontally, enter vertically
-			// Keep offset in the vertical middle segment to prevent overlap
-			const midX = (fp.x + tp.x) / 2 + offset;
-			return [
-				fp,                       // Start
-				{ x: midX, y: fp.y },    // Go horizontal (with offset)
-				{ x: midX, y: tp.y },    // Go vertical (keeping offset) - parallel edges separated here
-				tp                        // Final turn to target
-			];
-		} else if ((fromSide === 'top' || fromSide === 'bottom') && (toSide === 'left' || toSide === 'right')) {
-			// Exit vertically, enter horizontally
-			// Keep offset in the horizontal middle segment to prevent overlap
-			const midY = (fp.y + tp.y) / 2 + offset;
-			return [
-				fp,                       // Start
-				{ x: fp.x, y: midY },    // Go vertical (with offset)
-				{ x: tp.x, y: midY },    // Go horizontal (keeping offset) - parallel edges separated here
-				tp                        // Final turn to target
-			];
-		} else if (fromSide === 'top' || fromSide === 'bottom') {
-			// Both vertical: offset the horizontal middle segment
-			const midY = (fp.y + tp.y) / 2 + offset;
+		// Simple 3-segment (4-point) orthogonal path
+		// Offset is applied to the middle turning point
+		const midY = (fp.y + tp.y) / 2;
+		const midX = (fp.x + tp.x) / 2;
+
+		if (fromSide === 'top' || fromSide === 'bottom') {
+			// Vertical start: go vertical, then horizontal, then vertical
 			return [
 				fp,
-				{ x: fp.x, y: midY },
-				{ x: tp.x, y: midY },
+				{ x: fp.x, y: midY + offset },
+				{ x: tp.x, y: midY + offset },
 				tp
 			];
 		} else {
-			// Both horizontal: offset the vertical middle segment
-			const midX = (fp.x + tp.x) / 2 + offset;
+			// Horizontal start: go horizontal, then vertical, then horizontal
 			return [
 				fp,
-				{ x: midX, y: fp.y },
-				{ x: midX, y: tp.y },
+				{ x: midX + offset, y: fp.y },
+				{ x: midX + offset, y: tp.y },
 				tp
 			];
 		}
