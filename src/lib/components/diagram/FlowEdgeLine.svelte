@@ -52,112 +52,50 @@
 	const route = $derived.by(() => {
 		const dx = toNode.position.x - fromNode.position.x;
 		const dy = toNode.position.y - fromNode.position.y;
-		const absDx = Math.abs(dx);
 
-		// Determine connection sides based on flowchart conventions:
-		// - Decision nodes can only exit from left, right, or bottom (NOT top)
-		// - Prefer top-to-bottom flow (arrow points down)
-		// - Use left-to-right for horizontal flow (arrow points right)
+		// Simple rules:
+		// 1. Prefer top-to-bottom flow (fromSide=bottom, toSide=top)
+		// 2. Decision nodes: exit from bottom/left/right only, enter from top only
 
-		let fromSide: 'top' | 'bottom' | 'left' | 'right';
-		let toSide: 'top' | 'bottom' | 'left' | 'right';
+		let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+		let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
 
-		const isFromDecision = fromNode.type === 'decision';
-		const isToDecision = toNode.type === 'decision';
-		const isLoop = dy < -NODE_H;
-
-		if (isLoop && !isFromDecision) {
-			// Loop: route around the side (only for non-decision nodes)
-			const useRight = dx >= 0;
-			fromSide = useRight ? 'right' : 'left';
-			toSide = useRight ? 'right' : 'left';
-
-			const fp = getPort(fromNode, fromSide);
-			const tp = getPort(toNode, toSide);
-			const sideX = (useRight ? Math.max(fp.x, tp.x) : Math.min(fp.x, tp.x)) + (useRight ? LOOP_OFFSET : -LOOP_OFFSET) + offset;
-
-			return [
-				fp,
-				{ x: sideX, y: fp.y },
-				{ x: sideX, y: tp.y },
-				tp
-			];
-		}
-
-		// Determine fromSide (where edge exits)
-		if (isFromDecision) {
-			// Decision nodes: only exit from left, right, or bottom
-			if (absDx > 30) {
+		// Choose fromSide
+		if (fromNode.type === 'decision') {
+			// Decision: prefer bottom, or left/right if target is to the side
+			if (Math.abs(dx) > Math.abs(dy) * 1.5) {
 				fromSide = dx > 0 ? 'right' : 'left';
 			} else {
 				fromSide = 'bottom';
 			}
 		} else {
-			// Normal nodes: prefer downward flow
-			if (dy > 0) {
-				fromSide = 'bottom';
-			} else if (dy < 0) {
-				fromSide = 'top';
-			} else {
-				fromSide = dx > 0 ? 'right' : 'left';
-			}
+			// Normal: prefer bottom (downward)
+			fromSide = dy >= 0 ? 'bottom' : 'top';
 		}
 
-		// Determine toSide (where edge enters)
-		if (isToDecision) {
-			// Decision nodes: ONLY receive from top (never from bottom/left/right)
+		// Choose toSide
+		if (toNode.type === 'decision') {
+			// Decision: ALWAYS enter from top
 			toSide = 'top';
 		} else {
-			// Normal nodes: enter from appropriate side
-			if (dy > 0) {
-				toSide = 'top';
-			} else if (dy < 0) {
-				toSide = 'bottom';
-			} else {
-				toSide = dx > 0 ? 'left' : 'right';
-			}
+			// Normal: enter from top if coming from above
+			toSide = dy >= 0 ? 'top' : 'bottom';
 		}
 
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// For decision nodes exiting from sides: turn down quickly
-		if (isFromDecision && (fromSide === 'left' || fromSide === 'right')) {
-			// Exit from decision side: go horizontal briefly, then turn DOWN
-			const exitDistance = 60; // Short horizontal distance before turning
-			const turnX = fromSide === 'right' ? fp.x + exitDistance : fp.x - exitDistance;
-			const midY = Math.max(fp.y, tp.y) + 40; // Go down below both nodes
+		// Simple 4-point orthogonal path
+		const midY = (fp.y + tp.y) / 2 + offset;
+		const midX = (fp.x + tp.x) / 2 + offset;
 
-			return [
-				fp,
-				{ x: turnX + offset, y: fp.y },        // Short horizontal exit
-				{ x: turnX + offset, y: midY },        // Turn down (arrow points DOWN)
-				{ x: tp.x, y: midY },                  // Route to target x
-				tp                                      // Final approach to target
-			];
-		}
-
-		// Normal routing for other cases
-		const midY = (fp.y + tp.y) / 2;
-		const midX = (fp.x + tp.x) / 2;
-
-		if (fromSide === 'top' || fromSide === 'bottom') {
-			// Vertical start: go vertical, then horizontal, then vertical
-			return [
-				fp,
-				{ x: fp.x, y: midY + offset },
-				{ x: tp.x, y: midY + offset },
-				tp
-			];
-		} else {
-			// Horizontal start: go horizontal, then vertical, then horizontal
-			return [
-				fp,
-				{ x: midX + offset, y: fp.y },
-				{ x: midX + offset, y: tp.y },
-				tp
-			];
-		}
+		// Vertical-first path (most common for top-to-bottom flow)
+		return [
+			fp,
+			{ x: fp.x, y: midY },
+			{ x: tp.x, y: midY },
+			tp
+		];
 	});
 
 	const pathD = $derived(
