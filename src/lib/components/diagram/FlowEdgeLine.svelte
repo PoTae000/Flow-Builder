@@ -115,9 +115,30 @@
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Create orthogonal path
-		if (fromSide === 'top' || fromSide === 'bottom') {
-			// Vertical exit: go vertical first, then horizontal, then vertical
+		// Create orthogonal path ensuring arrow points in correct direction
+		// The last segment must be aligned with toSide for proper arrow orientation
+		if ((fromSide === 'left' || fromSide === 'right') && (toSide === 'top' || toSide === 'bottom')) {
+			// Exit horizontally, enter vertically
+			// Last segment must be vertical for arrow to point up/down
+			const midX = (fp.x + tp.x) / 2 + offset;
+			return [
+				fp,                       // Start
+				{ x: midX, y: fp.y },    // Go horizontal
+				{ x: tp.x, y: fp.y },    // Turn to align with target x
+				tp                        // Go vertical to target (arrow points down/up)
+			];
+		} else if ((fromSide === 'top' || fromSide === 'bottom') && (toSide === 'left' || toSide === 'right')) {
+			// Exit vertically, enter horizontally
+			// Last segment must be horizontal for arrow to point left/right
+			const midY = (fp.y + tp.y) / 2 + offset;
+			return [
+				fp,                       // Start
+				{ x: fp.x, y: midY },    // Go vertical
+				{ x: fp.x, y: tp.y },    // Turn to align with target y
+				tp                        // Go horizontal to target (arrow points left/right)
+			];
+		} else if (fromSide === 'top' || fromSide === 'bottom') {
+			// Both vertical
 			const midY = (fp.y + tp.y) / 2 + offset;
 			return [
 				fp,
@@ -126,7 +147,7 @@
 				tp
 			];
 		} else {
-			// Horizontal exit: go horizontal first, then vertical, then horizontal
+			// Both horizontal
 			const midX = (fp.x + tp.x) / 2 + offset;
 			return [
 				fp,
@@ -151,15 +172,39 @@
 		return { x: (pts[mi - 1].x + pts[mi].x) / 2, y: (pts[mi - 1].y + pts[mi].y) / 2 };
 	});
 
-	// Condition label position (center of the edge line)
+	// Condition label position (beside the edge line, not on top of it)
 	const conditionPos = $derived.by(() => {
 		const pts = route;
+		let centerX: number, centerY: number;
+
 		if (pts.length === 2) {
-			return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+			centerX = (pts[0].x + pts[1].x) / 2;
+			centerY = (pts[0].y + pts[1].y) / 2;
+		} else {
+			// Position at the middle of the path
+			const mi = Math.floor(pts.length / 2);
+			centerX = (pts[mi - 1].x + pts[mi].x) / 2;
+			centerY = (pts[mi - 1].y + pts[mi].y) / 2;
 		}
-		// Position at the middle of the path
+
+		// Determine if the middle segment is vertical or horizontal
 		const mi = Math.floor(pts.length / 2);
-		return { x: (pts[mi - 1].x + pts[mi].x) / 2, y: (pts[mi - 1].y + pts[mi].y) / 2 };
+		const isVertical = pts[mi - 1] && pts[mi] && Math.abs(pts[mi].y - pts[mi - 1].y) > Math.abs(pts[mi].x - pts[mi - 1].x);
+
+		// Offset label to the side of the line
+		if (isVertical) {
+			// Vertical line: position yes to the left, no to the right
+			return {
+				x: centerX + (edge.condition === 'yes' ? -18 : 18),
+				y: centerY
+			};
+		} else {
+			// Horizontal line: position above the line
+			return {
+				x: centerX,
+				y: centerY - 12
+			};
+		}
 	});
 </script>
 
