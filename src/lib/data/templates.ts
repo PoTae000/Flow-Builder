@@ -645,12 +645,12 @@ export const flowchartTemplates: FlowchartTemplate[] = [
 			{ id: 'fc1n6', name: 'End', type: 'start-end', position: { x: 200, y: 450 } }
 		],
 		flowEdges: [
-			{ id: 'fc1e1', label: '', fromNode: 'fc1n1', toNode: 'fc1n2' },
-			{ id: 'fc1e2', label: '', fromNode: 'fc1n2', toNode: 'fc1n3' },
-			{ id: 'fc1e3', label: 'yes', fromNode: 'fc1n3', toNode: 'fc1n4', condition: 'yes' },
-			{ id: 'fc1e4', label: 'no', fromNode: 'fc1n3', toNode: 'fc1n5', condition: 'no' },
-			{ id: 'fc1e5', label: '', fromNode: 'fc1n4', toNode: 'fc1n6' },
-			{ id: 'fc1e6', label: '', fromNode: 'fc1n5', toNode: 'fc1n6' }
+			{ id: 'fc1e1', label: '', fromNodeId: 'fc1n1', toNodeId: 'fc1n2' },
+			{ id: 'fc1e2', label: '', fromNodeId: 'fc1n2', toNodeId: 'fc1n3' },
+			{ id: 'fc1e3', label: 'yes', fromNodeId: 'fc1n3', toNodeId: 'fc1n4', condition: 'yes' },
+			{ id: 'fc1e4', label: 'no', fromNodeId: 'fc1n3', toNodeId: 'fc1n5', condition: 'no' },
+			{ id: 'fc1e5', label: '', fromNodeId: 'fc1n4', toNodeId: 'fc1n6' },
+			{ id: 'fc1e6', label: '', fromNodeId: 'fc1n5', toNodeId: 'fc1n6' }
 		]
 	},
 	{
@@ -669,17 +669,17 @@ export const flowchartTemplates: FlowchartTemplate[] = [
 			{ id: 'fc2n10', name: 'End', type: 'start-end', position: { x: 350, y: 630 } }
 		],
 		flowEdges: [
-			{ id: 'fc2e1', label: '', fromNode: 'fc2n1', toNode: 'fc2n2' },
-			{ id: 'fc2e2', label: '', fromNode: 'fc2n2', toNode: 'fc2n3' },
-			{ id: 'fc2e3', label: '', fromNode: 'fc2n3', toNode: 'fc2n4' },
-			{ id: 'fc2e4', label: 'yes', fromNode: 'fc2n4', toNode: 'fc2n5', condition: 'yes' },
-			{ id: 'fc2e5', label: 'no', fromNode: 'fc2n4', toNode: 'fc2n6', condition: 'no' },
-			{ id: 'fc2e6', label: '', fromNode: 'fc2n5', toNode: 'fc2n7' },
-			{ id: 'fc2e7', label: 'yes', fromNode: 'fc2n7', toNode: 'fc2n8', condition: 'yes' },
-			{ id: 'fc2e8', label: 'no', fromNode: 'fc2n7', toNode: 'fc2n9', condition: 'no' },
-			{ id: 'fc2e9', label: '', fromNode: 'fc2n6', toNode: 'fc2n10' },
-			{ id: 'fc2e10', label: '', fromNode: 'fc2n8', toNode: 'fc2n10' },
-			{ id: 'fc2e11', label: '', fromNode: 'fc2n9', toNode: 'fc2n10' }
+			{ id: 'fc2e1', label: '', fromNodeId: 'fc2n1', toNodeId: 'fc2n2' },
+			{ id: 'fc2e2', label: '', fromNodeId: 'fc2n2', toNodeId: 'fc2n3' },
+			{ id: 'fc2e3', label: '', fromNodeId: 'fc2n3', toNodeId: 'fc2n4' },
+			{ id: 'fc2e4', label: 'yes', fromNodeId: 'fc2n4', toNodeId: 'fc2n5', condition: 'yes' },
+			{ id: 'fc2e5', label: 'no', fromNodeId: 'fc2n4', toNodeId: 'fc2n6', condition: 'no' },
+			{ id: 'fc2e6', label: '', fromNodeId: 'fc2n5', toNodeId: 'fc2n7' },
+			{ id: 'fc2e7', label: 'yes', fromNodeId: 'fc2n7', toNodeId: 'fc2n8', condition: 'yes' },
+			{ id: 'fc2e8', label: 'no', fromNodeId: 'fc2n7', toNodeId: 'fc2n9', condition: 'no' },
+			{ id: 'fc2e9', label: '', fromNodeId: 'fc2n6', toNodeId: 'fc2n10' },
+			{ id: 'fc2e10', label: '', fromNodeId: 'fc2n8', toNodeId: 'fc2n10' },
+			{ id: 'fc2e11', label: '', fromNodeId: 'fc2n9', toNodeId: 'fc2n10' }
 		]
 	},
 	{
@@ -699,19 +699,19 @@ export const flowchartTemplates: FlowchartTemplate[] = [
 			{ id: 'fc3n11', name: 'End', type: 'start-end', position: { x: 275, y: 670 } }
 		],
 		flowEdges: [
-			{ id: 'fc3e1', label: '', fromNode: 'fc3n1', toNode: 'fc3n2' },
-			{ id: 'fc3e2', label: '', fromNode: 'fc3n2', toNode: 'fc3n3' },
-			{ id: 'fc3e3', label: 'yes', fromNode: 'fc3n3', toNode: 'fc3n4', condition: 'yes' },
-			{ id: 'fc3e4', label: 'no', fromNode: 'fc3n3', toNode: 'fc3n5', condition: 'no' },
-			{ id: 'fc3e5', label: 'yes', fromNode: 'fc3n5', toNode: 'fc3n6', condition: 'yes' },
-			{ id: 'fc3e6', label: 'no', fromNode: 'fc3n5', toNode: 'fc3n7', condition: 'no' },
-			{ id: 'fc3e7', label: 'yes', fromNode: 'fc3n7', toNode: 'fc3n8', condition: 'yes' },
-			{ id: 'fc3e8', label: 'no', fromNode: 'fc3n7', toNode: 'fc3n9', condition: 'no' },
-			{ id: 'fc3e9', label: '', fromNode: 'fc3n4', toNode: 'fc3n10' },
-			{ id: 'fc3e10', label: '', fromNode: 'fc3n6', toNode: 'fc3n10' },
-			{ id: 'fc3e11', label: '', fromNode: 'fc3n8', toNode: 'fc3n10' },
-			{ id: 'fc3e12', label: '', fromNode: 'fc3n9', toNode: 'fc3n10' },
-			{ id: 'fc3e13', label: '', fromNode: 'fc3n10', toNode: 'fc3n11' }
+			{ id: 'fc3e1', label: '', fromNodeId: 'fc3n1', toNodeId: 'fc3n2' },
+			{ id: 'fc3e2', label: '', fromNodeId: 'fc3n2', toNodeId: 'fc3n3' },
+			{ id: 'fc3e3', label: 'yes', fromNodeId: 'fc3n3', toNodeId: 'fc3n4', condition: 'yes' },
+			{ id: 'fc3e4', label: 'no', fromNodeId: 'fc3n3', toNodeId: 'fc3n5', condition: 'no' },
+			{ id: 'fc3e5', label: 'yes', fromNodeId: 'fc3n5', toNodeId: 'fc3n6', condition: 'yes' },
+			{ id: 'fc3e6', label: 'no', fromNodeId: 'fc3n5', toNodeId: 'fc3n7', condition: 'no' },
+			{ id: 'fc3e7', label: 'yes', fromNodeId: 'fc3n7', toNodeId: 'fc3n8', condition: 'yes' },
+			{ id: 'fc3e8', label: 'no', fromNodeId: 'fc3n7', toNodeId: 'fc3n9', condition: 'no' },
+			{ id: 'fc3e9', label: '', fromNodeId: 'fc3n4', toNodeId: 'fc3n10' },
+			{ id: 'fc3e10', label: '', fromNodeId: 'fc3n6', toNodeId: 'fc3n10' },
+			{ id: 'fc3e11', label: '', fromNodeId: 'fc3n8', toNodeId: 'fc3n10' },
+			{ id: 'fc3e12', label: '', fromNodeId: 'fc3n9', toNodeId: 'fc3n10' },
+			{ id: 'fc3e13', label: '', fromNodeId: 'fc3n10', toNodeId: 'fc3n11' }
 		]
 	},
 	{
@@ -730,17 +730,17 @@ export const flowchartTemplates: FlowchartTemplate[] = [
 			{ id: 'fc4n10', name: 'End', type: 'start-end', position: { x: 200, y: 710 } }
 		],
 		flowEdges: [
-			{ id: 'fc4e1', label: '', fromNode: 'fc4n1', toNode: 'fc4n2' },
-			{ id: 'fc4e2', label: '', fromNode: 'fc4n2', toNode: 'fc4n3' },
-			{ id: 'fc4e3', label: '', fromNode: 'fc4n3', toNode: 'fc4n4' },
-			{ id: 'fc4e4', label: 'yes', fromNode: 'fc4n4', toNode: 'fc4n5', condition: 'yes' },
-			{ id: 'fc4e5', label: 'no', fromNode: 'fc4n4', toNode: 'fc4n8', condition: 'no' },
-			{ id: 'fc4e6', label: '', fromNode: 'fc4n5', toNode: 'fc4n6' },
-			{ id: 'fc4e7', label: 'yes', fromNode: 'fc4n6', toNode: 'fc4n7', condition: 'yes' },
-			{ id: 'fc4e8', label: 'no', fromNode: 'fc4n6', toNode: 'fc4n8', condition: 'no' },
-			{ id: 'fc4e9', label: '', fromNode: 'fc4n7', toNode: 'fc4n9' },
-			{ id: 'fc4e10', label: '', fromNode: 'fc4n8', toNode: 'fc4n9' },
-			{ id: 'fc4e11', label: '', fromNode: 'fc4n9', toNode: 'fc4n10' }
+			{ id: 'fc4e1', label: '', fromNodeId: 'fc4n1', toNodeId: 'fc4n2' },
+			{ id: 'fc4e2', label: '', fromNodeId: 'fc4n2', toNodeId: 'fc4n3' },
+			{ id: 'fc4e3', label: '', fromNodeId: 'fc4n3', toNodeId: 'fc4n4' },
+			{ id: 'fc4e4', label: 'yes', fromNodeId: 'fc4n4', toNodeId: 'fc4n5', condition: 'yes' },
+			{ id: 'fc4e5', label: 'no', fromNodeId: 'fc4n4', toNodeId: 'fc4n8', condition: 'no' },
+			{ id: 'fc4e6', label: '', fromNodeId: 'fc4n5', toNodeId: 'fc4n6' },
+			{ id: 'fc4e7', label: 'yes', fromNodeId: 'fc4n6', toNodeId: 'fc4n7', condition: 'yes' },
+			{ id: 'fc4e8', label: 'no', fromNodeId: 'fc4n6', toNodeId: 'fc4n8', condition: 'no' },
+			{ id: 'fc4e9', label: '', fromNodeId: 'fc4n7', toNodeId: 'fc4n9' },
+			{ id: 'fc4e10', label: '', fromNodeId: 'fc4n8', toNodeId: 'fc4n9' },
+			{ id: 'fc4e11', label: '', fromNodeId: 'fc4n9', toNodeId: 'fc4n10' }
 		]
 	}
 ];
@@ -757,13 +757,13 @@ export const dfdTemplates: DFDTemplate[] = [
 			{ id: 'dfd1n5', name: 'Products DB', type: 'data-store', position: { x: 450, y: 250 } }
 		],
 		dfdFlows: [
-			{ id: 'dfd1f1', label: 'Order Details', fromNode: 'dfd1n1', toNode: 'dfd1n2' },
-			{ id: 'dfd1f2', label: 'Confirmation', fromNode: 'dfd1n2', toNode: 'dfd1n1' },
-			{ id: 'dfd1f3', label: 'Order Data', fromNode: 'dfd1n2', toNode: 'dfd1n4' },
-			{ id: 'dfd1f4', label: 'Stock Check', fromNode: 'dfd1n2', toNode: 'dfd1n3' },
-			{ id: 'dfd1f5', label: 'Availability', fromNode: 'dfd1n3', toNode: 'dfd1n2' },
-			{ id: 'dfd1f6', label: 'Product Info', fromNode: 'dfd1n5', toNode: 'dfd1n3' },
-			{ id: 'dfd1f7', label: 'Update Stock', fromNode: 'dfd1n3', toNode: 'dfd1n5' }
+			{ id: 'dfd1f1', label: 'Order Details', fromNodeId: 'dfd1n1', toNodeId: 'dfd1n2' },
+			{ id: 'dfd1f2', label: 'Confirmation', fromNodeId: 'dfd1n2', toNodeId: 'dfd1n1' },
+			{ id: 'dfd1f3', label: 'Order Data', fromNodeId: 'dfd1n2', toNodeId: 'dfd1n4' },
+			{ id: 'dfd1f4', label: 'Stock Check', fromNodeId: 'dfd1n2', toNodeId: 'dfd1n3' },
+			{ id: 'dfd1f5', label: 'Availability', fromNodeId: 'dfd1n3', toNodeId: 'dfd1n2' },
+			{ id: 'dfd1f6', label: 'Product Info', fromNodeId: 'dfd1n5', toNodeId: 'dfd1n3' },
+			{ id: 'dfd1f7', label: 'Update Stock', fromNodeId: 'dfd1n3', toNodeId: 'dfd1n5' }
 		]
 	},
 	{
@@ -778,14 +778,14 @@ export const dfdTemplates: DFDTemplate[] = [
 			{ id: 'dfd2n6', name: 'Loans DB', type: 'data-store', position: { x: 450, y: 280 } }
 		],
 		dfdFlows: [
-			{ id: 'dfd2f1', label: 'Borrow Request', fromNode: 'dfd2n1', toNode: 'dfd2n3' },
-			{ id: 'dfd2f2', label: 'Book Receipt', fromNode: 'dfd2n3', toNode: 'dfd2n1' },
-			{ id: 'dfd2f3', label: 'Book Info', fromNode: 'dfd2n5', toNode: 'dfd2n3' },
-			{ id: 'dfd2f4', label: 'Loan Record', fromNode: 'dfd2n3', toNode: 'dfd2n6' },
-			{ id: 'dfd2f5', label: 'Return Book', fromNode: 'dfd2n1', toNode: 'dfd2n4' },
-			{ id: 'dfd2f6', label: 'Return Receipt', fromNode: 'dfd2n4', toNode: 'dfd2n1' },
-			{ id: 'dfd2f7', label: 'Update Loan', fromNode: 'dfd2n4', toNode: 'dfd2n6' },
-			{ id: 'dfd2f8', label: 'Manage Books', fromNode: 'dfd2n2', toNode: 'dfd2n5' }
+			{ id: 'dfd2f1', label: 'Borrow Request', fromNodeId: 'dfd2n1', toNodeId: 'dfd2n3' },
+			{ id: 'dfd2f2', label: 'Book Receipt', fromNodeId: 'dfd2n3', toNodeId: 'dfd2n1' },
+			{ id: 'dfd2f3', label: 'Book Info', fromNodeId: 'dfd2n5', toNodeId: 'dfd2n3' },
+			{ id: 'dfd2f4', label: 'Loan Record', fromNodeId: 'dfd2n3', toNodeId: 'dfd2n6' },
+			{ id: 'dfd2f5', label: 'Return Book', fromNodeId: 'dfd2n1', toNodeId: 'dfd2n4' },
+			{ id: 'dfd2f6', label: 'Return Receipt', fromNodeId: 'dfd2n4', toNodeId: 'dfd2n1' },
+			{ id: 'dfd2f7', label: 'Update Loan', fromNodeId: 'dfd2n4', toNodeId: 'dfd2n6' },
+			{ id: 'dfd2f8', label: 'Manage Books', fromNodeId: 'dfd2n2', toNodeId: 'dfd2n5' }
 		]
 	},
 	{
@@ -800,13 +800,13 @@ export const dfdTemplates: DFDTemplate[] = [
 			{ id: 'dfd3n6', name: 'Enrollments DB', type: 'data-store', position: { x: 380, y: 260 } }
 		],
 		dfdFlows: [
-			{ id: 'dfd3f1', label: 'Enrollment Request', fromNode: 'dfd3n1', toNode: 'dfd3n3' },
-			{ id: 'dfd3f2', label: 'Confirmation', fromNode: 'dfd3n3', toNode: 'dfd3n1' },
-			{ id: 'dfd3f3', label: 'Course Info', fromNode: 'dfd3n5', toNode: 'dfd3n3' },
-			{ id: 'dfd3f4', label: 'Check Request', fromNode: 'dfd3n3', toNode: 'dfd3n4' },
-			{ id: 'dfd3f5', label: 'Check Result', fromNode: 'dfd3n4', toNode: 'dfd3n3' },
-			{ id: 'dfd3f6', label: 'Enrollment Data', fromNode: 'dfd3n3', toNode: 'dfd3n6' },
-			{ id: 'dfd3f7', label: 'Course Approval', fromNode: 'dfd3n2', toNode: 'dfd3n5' }
+			{ id: 'dfd3f1', label: 'Enrollment Request', fromNodeId: 'dfd3n1', toNodeId: 'dfd3n3' },
+			{ id: 'dfd3f2', label: 'Confirmation', fromNodeId: 'dfd3n3', toNodeId: 'dfd3n1' },
+			{ id: 'dfd3f3', label: 'Course Info', fromNodeId: 'dfd3n5', toNodeId: 'dfd3n3' },
+			{ id: 'dfd3f4', label: 'Check Request', fromNodeId: 'dfd3n3', toNodeId: 'dfd3n4' },
+			{ id: 'dfd3f5', label: 'Check Result', fromNodeId: 'dfd3n4', toNodeId: 'dfd3n3' },
+			{ id: 'dfd3f6', label: 'Enrollment Data', fromNodeId: 'dfd3n3', toNodeId: 'dfd3n6' },
+			{ id: 'dfd3f7', label: 'Course Approval', fromNodeId: 'dfd3n2', toNodeId: 'dfd3n5' }
 		]
 	}
 ];
