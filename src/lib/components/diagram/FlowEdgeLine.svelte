@@ -62,10 +62,11 @@
 		let fromSide: 'top' | 'bottom' | 'left' | 'right';
 		let toSide: 'top' | 'bottom' | 'left' | 'right';
 
-		const isDecision = fromNode.type === 'decision';
+		const isFromDecision = fromNode.type === 'decision';
+		const isToDecision = toNode.type === 'decision';
 		const isLoop = dy < -NODE_H;
 
-		if (isLoop && !isDecision) {
+		if (isLoop && !isFromDecision) {
 			// Loop: route around the side (only for non-decision nodes)
 			const useRight = dx >= 0;
 			fromSide = useRight ? 'right' : 'left';
@@ -83,31 +84,36 @@
 			];
 		}
 
-		// For decision nodes: only exit from left, right, or bottom
-		if (isDecision) {
-			// Determine which side to exit based on target position
+		// Determine fromSide (where edge exits)
+		if (isFromDecision) {
+			// Decision nodes: only exit from left, right, or bottom
 			if (absDx > 30) {
-				// Target is significantly to the side: use left/right
 				fromSide = dx > 0 ? 'right' : 'left';
-				toSide = dy > 0 ? 'top' : 'bottom';
 			} else {
-				// Target is mostly below: use bottom
 				fromSide = 'bottom';
-				toSide = 'top';
 			}
 		} else {
 			// Normal nodes: prefer downward flow
 			if (dy > 0) {
-				// Target is below: use top-to-bottom flow
 				fromSide = 'bottom';
+			} else if (dy < 0) {
+				fromSide = 'top';
+			} else {
+				fromSide = dx > 0 ? 'right' : 'left';
+			}
+		}
+
+		// Determine toSide (where edge enters)
+		if (isToDecision) {
+			// Decision nodes: ONLY receive from top (never from bottom/left/right)
+			toSide = 'top';
+		} else {
+			// Normal nodes: enter from appropriate side
+			if (dy > 0) {
 				toSide = 'top';
 			} else if (dy < 0) {
-				// Target is above: use bottom-to-top (unusual but allowed)
-				fromSide = 'top';
 				toSide = 'bottom';
 			} else {
-				// Same level: use horizontal flow
-				fromSide = dx > 0 ? 'right' : 'left';
 				toSide = dx > 0 ? 'left' : 'right';
 			}
 		}
