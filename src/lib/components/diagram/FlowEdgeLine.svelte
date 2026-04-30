@@ -121,8 +121,23 @@
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Simple 3-segment (4-point) orthogonal path
-		// Offset is applied to the middle turning point
+		// For decision nodes exiting from sides: turn down quickly
+		if (isFromDecision && (fromSide === 'left' || fromSide === 'right')) {
+			// Exit from decision side: go horizontal briefly, then turn DOWN
+			const exitDistance = 60; // Short horizontal distance before turning
+			const turnX = fromSide === 'right' ? fp.x + exitDistance : fp.x - exitDistance;
+			const midY = Math.max(fp.y, tp.y) + 40; // Go down below both nodes
+
+			return [
+				fp,
+				{ x: turnX + offset, y: fp.y },        // Short horizontal exit
+				{ x: turnX + offset, y: midY },        // Turn down (arrow points DOWN)
+				{ x: tp.x, y: midY },                  // Route to target x
+				tp                                      // Final approach to target
+			];
+		}
+
+		// Normal routing for other cases
 		const midY = (fp.y + tp.y) / 2;
 		const midX = (fp.x + tp.x) / 2;
 
