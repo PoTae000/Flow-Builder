@@ -1,10 +1,25 @@
 import type { Entity, Relationship } from '$lib/types/er';
+import type { FlowNode, FlowEdge, DFDNode, DFDFlow } from '$lib/types/flowchart';
 
 export interface DiagramTemplate {
 	name: string;
 	description: string;
 	entities: Entity[];
 	relationships: Relationship[];
+}
+
+export interface FlowchartTemplate {
+	name: string;
+	description: string;
+	flowNodes: FlowNode[];
+	flowEdges: FlowEdge[];
+}
+
+export interface DFDTemplate {
+	name: string;
+	description: string;
+	dfdNodes: DFDNode[];
+	dfdFlows: DFDFlow[];
 }
 
 export const templates: DiagramTemplate[] = [
@@ -613,6 +628,185 @@ export const templates: DiagramTemplate[] = [
 				cardinalities: ['1', 'N'],
 				isIdentifying: false
 			}
+		]
+	}
+];
+
+export const flowchartTemplates: FlowchartTemplate[] = [
+	{
+		name: 'User Login',
+		description: 'กระบวนการเข้าสู่ระบบ — ตรวจสอบ username/password',
+		flowNodes: [
+			{ id: 'fc1n1', name: 'Start', type: 'start-end', position: { x: 200, y: 50 } },
+			{ id: 'fc1n2', name: 'Enter Credentials', type: 'input-output', position: { x: 200, y: 150 } },
+			{ id: 'fc1n3', name: 'Valid?', type: 'decision', position: { x: 200, y: 250 } },
+			{ id: 'fc1n4', name: 'Show Dashboard', type: 'process', position: { x: 350, y: 350 } },
+			{ id: 'fc1n5', name: 'Show Error', type: 'process', position: { x: 50, y: 350 } },
+			{ id: 'fc1n6', name: 'End', type: 'start-end', position: { x: 200, y: 450 } }
+		],
+		flowEdges: [
+			{ id: 'fc1e1', label: '', fromNode: 'fc1n1', toNode: 'fc1n2' },
+			{ id: 'fc1e2', label: '', fromNode: 'fc1n2', toNode: 'fc1n3' },
+			{ id: 'fc1e3', label: 'yes', fromNode: 'fc1n3', toNode: 'fc1n4', condition: 'yes' },
+			{ id: 'fc1e4', label: 'no', fromNode: 'fc1n3', toNode: 'fc1n5', condition: 'no' },
+			{ id: 'fc1e5', label: '', fromNode: 'fc1n4', toNode: 'fc1n6' },
+			{ id: 'fc1e6', label: '', fromNode: 'fc1n5', toNode: 'fc1n6' }
+		]
+	},
+	{
+		name: 'Order Processing',
+		description: 'กระบวนการสั่งซื้อสินค้า — ตรวจสอบสต็อกและชำระเงิน',
+		flowNodes: [
+			{ id: 'fc2n1', name: 'Start', type: 'start-end', position: { x: 200, y: 50 } },
+			{ id: 'fc2n2', name: 'Receive Order', type: 'input-output', position: { x: 200, y: 130 } },
+			{ id: 'fc2n3', name: 'Check Stock', type: 'process', position: { x: 200, y: 210 } },
+			{ id: 'fc2n4', name: 'In Stock?', type: 'decision', position: { x: 200, y: 290 } },
+			{ id: 'fc2n5', name: 'Process Payment', type: 'process', position: { x: 350, y: 370 } },
+			{ id: 'fc2n6', name: 'Notify Out of Stock', type: 'process', position: { x: 50, y: 370 } },
+			{ id: 'fc2n7', name: 'Payment OK?', type: 'decision', position: { x: 350, y: 470 } },
+			{ id: 'fc2n8', name: 'Ship Order', type: 'process', position: { x: 500, y: 550 } },
+			{ id: 'fc2n9', name: 'Cancel Order', type: 'process', position: { x: 200, y: 550 } },
+			{ id: 'fc2n10', name: 'End', type: 'start-end', position: { x: 350, y: 630 } }
+		],
+		flowEdges: [
+			{ id: 'fc2e1', label: '', fromNode: 'fc2n1', toNode: 'fc2n2' },
+			{ id: 'fc2e2', label: '', fromNode: 'fc2n2', toNode: 'fc2n3' },
+			{ id: 'fc2e3', label: '', fromNode: 'fc2n3', toNode: 'fc2n4' },
+			{ id: 'fc2e4', label: 'yes', fromNode: 'fc2n4', toNode: 'fc2n5', condition: 'yes' },
+			{ id: 'fc2e5', label: 'no', fromNode: 'fc2n4', toNode: 'fc2n6', condition: 'no' },
+			{ id: 'fc2e6', label: '', fromNode: 'fc2n5', toNode: 'fc2n7' },
+			{ id: 'fc2e7', label: 'yes', fromNode: 'fc2n7', toNode: 'fc2n8', condition: 'yes' },
+			{ id: 'fc2e8', label: 'no', fromNode: 'fc2n7', toNode: 'fc2n9', condition: 'no' },
+			{ id: 'fc2e9', label: '', fromNode: 'fc2n6', toNode: 'fc2n10' },
+			{ id: 'fc2e10', label: '', fromNode: 'fc2n8', toNode: 'fc2n10' },
+			{ id: 'fc2e11', label: '', fromNode: 'fc2n9', toNode: 'fc2n10' }
+		]
+	},
+	{
+		name: 'Grade Calculator',
+		description: 'คำนวณเกรด — รับคะแนน ตรวจสอบเกณฑ์',
+		flowNodes: [
+			{ id: 'fc3n1', name: 'Start', type: 'start-end', position: { x: 200, y: 50 } },
+			{ id: 'fc3n2', name: 'Input Score', type: 'input-output', position: { x: 200, y: 130 } },
+			{ id: 'fc3n3', name: 'Score >= 80?', type: 'decision', position: { x: 200, y: 210 } },
+			{ id: 'fc3n4', name: 'Grade = A', type: 'process', position: { x: 350, y: 290 } },
+			{ id: 'fc3n5', name: 'Score >= 70?', type: 'decision', position: { x: 200, y: 310 } },
+			{ id: 'fc3n6', name: 'Grade = B', type: 'process', position: { x: 350, y: 390 } },
+			{ id: 'fc3n7', name: 'Score >= 60?', type: 'decision', position: { x: 200, y: 410 } },
+			{ id: 'fc3n8', name: 'Grade = C', type: 'process', position: { x: 350, y: 490 } },
+			{ id: 'fc3n9', name: 'Grade = F', type: 'process', position: { x: 200, y: 510 } },
+			{ id: 'fc3n10', name: 'Display Grade', type: 'input-output', position: { x: 275, y: 590 } },
+			{ id: 'fc3n11', name: 'End', type: 'start-end', position: { x: 275, y: 670 } }
+		],
+		flowEdges: [
+			{ id: 'fc3e1', label: '', fromNode: 'fc3n1', toNode: 'fc3n2' },
+			{ id: 'fc3e2', label: '', fromNode: 'fc3n2', toNode: 'fc3n3' },
+			{ id: 'fc3e3', label: 'yes', fromNode: 'fc3n3', toNode: 'fc3n4', condition: 'yes' },
+			{ id: 'fc3e4', label: 'no', fromNode: 'fc3n3', toNode: 'fc3n5', condition: 'no' },
+			{ id: 'fc3e5', label: 'yes', fromNode: 'fc3n5', toNode: 'fc3n6', condition: 'yes' },
+			{ id: 'fc3e6', label: 'no', fromNode: 'fc3n5', toNode: 'fc3n7', condition: 'no' },
+			{ id: 'fc3e7', label: 'yes', fromNode: 'fc3n7', toNode: 'fc3n8', condition: 'yes' },
+			{ id: 'fc3e8', label: 'no', fromNode: 'fc3n7', toNode: 'fc3n9', condition: 'no' },
+			{ id: 'fc3e9', label: '', fromNode: 'fc3n4', toNode: 'fc3n10' },
+			{ id: 'fc3e10', label: '', fromNode: 'fc3n6', toNode: 'fc3n10' },
+			{ id: 'fc3e11', label: '', fromNode: 'fc3n8', toNode: 'fc3n10' },
+			{ id: 'fc3e12', label: '', fromNode: 'fc3n9', toNode: 'fc3n10' },
+			{ id: 'fc3e13', label: '', fromNode: 'fc3n10', toNode: 'fc3n11' }
+		]
+	},
+	{
+		name: 'ATM Withdrawal',
+		description: 'ถอนเงิน ATM — ตรวจสอบยอดและ PIN',
+		flowNodes: [
+			{ id: 'fc4n1', name: 'Start', type: 'start-end', position: { x: 200, y: 50 } },
+			{ id: 'fc4n2', name: 'Insert Card', type: 'input-output', position: { x: 200, y: 130 } },
+			{ id: 'fc4n3', name: 'Enter PIN', type: 'input-output', position: { x: 200, y: 210 } },
+			{ id: 'fc4n4', name: 'PIN Correct?', type: 'decision', position: { x: 200, y: 290 } },
+			{ id: 'fc4n5', name: 'Enter Amount', type: 'input-output', position: { x: 200, y: 390 } },
+			{ id: 'fc4n6', name: 'Balance OK?', type: 'decision', position: { x: 200, y: 470 } },
+			{ id: 'fc4n7', name: 'Dispense Cash', type: 'process', position: { x: 350, y: 550 } },
+			{ id: 'fc4n8', name: 'Show Error', type: 'process', position: { x: 50, y: 470 } },
+			{ id: 'fc4n9', name: 'Eject Card', type: 'process', position: { x: 200, y: 630 } },
+			{ id: 'fc4n10', name: 'End', type: 'start-end', position: { x: 200, y: 710 } }
+		],
+		flowEdges: [
+			{ id: 'fc4e1', label: '', fromNode: 'fc4n1', toNode: 'fc4n2' },
+			{ id: 'fc4e2', label: '', fromNode: 'fc4n2', toNode: 'fc4n3' },
+			{ id: 'fc4e3', label: '', fromNode: 'fc4n3', toNode: 'fc4n4' },
+			{ id: 'fc4e4', label: 'yes', fromNode: 'fc4n4', toNode: 'fc4n5', condition: 'yes' },
+			{ id: 'fc4e5', label: 'no', fromNode: 'fc4n4', toNode: 'fc4n8', condition: 'no' },
+			{ id: 'fc4e6', label: '', fromNode: 'fc4n5', toNode: 'fc4n6' },
+			{ id: 'fc4e7', label: 'yes', fromNode: 'fc4n6', toNode: 'fc4n7', condition: 'yes' },
+			{ id: 'fc4e8', label: 'no', fromNode: 'fc4n6', toNode: 'fc4n8', condition: 'no' },
+			{ id: 'fc4e9', label: '', fromNode: 'fc4n7', toNode: 'fc4n9' },
+			{ id: 'fc4e10', label: '', fromNode: 'fc4n8', toNode: 'fc4n9' },
+			{ id: 'fc4e11', label: '', fromNode: 'fc4n9', toNode: 'fc4n10' }
+		]
+	}
+];
+
+export const dfdTemplates: DFDTemplate[] = [
+	{
+		name: 'Online Store',
+		description: 'ระบบร้านค้าออนไลน์ — ลูกค้า, สั่งซื้อ, จัดส่ง',
+		dfdNodes: [
+			{ id: 'dfd1n1', name: 'Customer', type: 'external-entity', position: { x: 50, y: 100 } },
+			{ id: 'dfd1n2', name: 'Process Order', type: 'process', processNumber: '1.0', position: { x: 250, y: 100 } },
+			{ id: 'dfd1n3', name: 'Manage Inventory', type: 'process', processNumber: '2.0', position: { x: 450, y: 100 } },
+			{ id: 'dfd1n4', name: 'Orders DB', type: 'data-store', position: { x: 250, y: 250 } },
+			{ id: 'dfd1n5', name: 'Products DB', type: 'data-store', position: { x: 450, y: 250 } }
+		],
+		dfdFlows: [
+			{ id: 'dfd1f1', label: 'Order Details', fromNode: 'dfd1n1', toNode: 'dfd1n2' },
+			{ id: 'dfd1f2', label: 'Confirmation', fromNode: 'dfd1n2', toNode: 'dfd1n1' },
+			{ id: 'dfd1f3', label: 'Order Data', fromNode: 'dfd1n2', toNode: 'dfd1n4' },
+			{ id: 'dfd1f4', label: 'Stock Check', fromNode: 'dfd1n2', toNode: 'dfd1n3' },
+			{ id: 'dfd1f5', label: 'Availability', fromNode: 'dfd1n3', toNode: 'dfd1n2' },
+			{ id: 'dfd1f6', label: 'Product Info', fromNode: 'dfd1n5', toNode: 'dfd1n3' },
+			{ id: 'dfd1f7', label: 'Update Stock', fromNode: 'dfd1n3', toNode: 'dfd1n5' }
+		]
+	},
+	{
+		name: 'Library System',
+		description: 'ระบบห้องสมุด — ยืม-คืนหนังสือ',
+		dfdNodes: [
+			{ id: 'dfd2n1', name: 'Member', type: 'external-entity', position: { x: 50, y: 100 } },
+			{ id: 'dfd2n2', name: 'Librarian', type: 'external-entity', position: { x: 50, y: 280 } },
+			{ id: 'dfd2n3', name: 'Borrow Book', type: 'process', processNumber: '1.0', position: { x: 250, y: 100 } },
+			{ id: 'dfd2n4', name: 'Return Book', type: 'process', processNumber: '2.0', position: { x: 250, y: 280 } },
+			{ id: 'dfd2n5', name: 'Books DB', type: 'data-store', position: { x: 450, y: 100 } },
+			{ id: 'dfd2n6', name: 'Loans DB', type: 'data-store', position: { x: 450, y: 280 } }
+		],
+		dfdFlows: [
+			{ id: 'dfd2f1', label: 'Borrow Request', fromNode: 'dfd2n1', toNode: 'dfd2n3' },
+			{ id: 'dfd2f2', label: 'Book Receipt', fromNode: 'dfd2n3', toNode: 'dfd2n1' },
+			{ id: 'dfd2f3', label: 'Book Info', fromNode: 'dfd2n5', toNode: 'dfd2n3' },
+			{ id: 'dfd2f4', label: 'Loan Record', fromNode: 'dfd2n3', toNode: 'dfd2n6' },
+			{ id: 'dfd2f5', label: 'Return Book', fromNode: 'dfd2n1', toNode: 'dfd2n4' },
+			{ id: 'dfd2f6', label: 'Return Receipt', fromNode: 'dfd2n4', toNode: 'dfd2n1' },
+			{ id: 'dfd2f7', label: 'Update Loan', fromNode: 'dfd2n4', toNode: 'dfd2n6' },
+			{ id: 'dfd2f8', label: 'Manage Books', fromNode: 'dfd2n2', toNode: 'dfd2n5' }
+		]
+	},
+	{
+		name: 'Student Enrollment',
+		description: 'ระบบลงทะเบียนเรียน — นักศึกษา, วิชา',
+		dfdNodes: [
+			{ id: 'dfd3n1', name: 'Student', type: 'external-entity', position: { x: 50, y: 180 } },
+			{ id: 'dfd3n2', name: 'Registrar', type: 'external-entity', position: { x: 550, y: 180 } },
+			{ id: 'dfd3n3', name: 'Enroll Course', type: 'process', processNumber: '1.0', position: { x: 220, y: 100 } },
+			{ id: 'dfd3n4', name: 'Check Prerequisites', type: 'process', processNumber: '2.0', position: { x: 380, y: 100 } },
+			{ id: 'dfd3n5', name: 'Courses DB', type: 'data-store', position: { x: 220, y: 260 } },
+			{ id: 'dfd3n6', name: 'Enrollments DB', type: 'data-store', position: { x: 380, y: 260 } }
+		],
+		dfdFlows: [
+			{ id: 'dfd3f1', label: 'Enrollment Request', fromNode: 'dfd3n1', toNode: 'dfd3n3' },
+			{ id: 'dfd3f2', label: 'Confirmation', fromNode: 'dfd3n3', toNode: 'dfd3n1' },
+			{ id: 'dfd3f3', label: 'Course Info', fromNode: 'dfd3n5', toNode: 'dfd3n3' },
+			{ id: 'dfd3f4', label: 'Check Request', fromNode: 'dfd3n3', toNode: 'dfd3n4' },
+			{ id: 'dfd3f5', label: 'Check Result', fromNode: 'dfd3n4', toNode: 'dfd3n3' },
+			{ id: 'dfd3f6', label: 'Enrollment Data', fromNode: 'dfd3n3', toNode: 'dfd3n6' },
+			{ id: 'dfd3f7', label: 'Course Approval', fromNode: 'dfd3n2', toNode: 'dfd3n5' }
 		]
 	}
 ];

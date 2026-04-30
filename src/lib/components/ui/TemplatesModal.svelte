@@ -1,16 +1,24 @@
 <script lang="ts">
-	import { templates } from '$lib/data/templates';
+	import { templates, flowchartTemplates, dfdTemplates } from '$lib/data/templates';
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
-	import type { DiagramTemplate } from '$lib/data/templates';
+	import type { DiagramTemplate, FlowchartTemplate, DFDTemplate } from '$lib/data/templates';
 
 	let { onclose }: { onclose: () => void } = $props();
 
 	let showAll = $state(false);
-	const visibleTemplates = $derived(showAll ? templates : templates.slice(0, 4));
 
-	async function applyTemplate(template: DiagramTemplate) {
+	// Get templates based on current diagram type
+	const allTemplates = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return flowchartTemplates;
+		if (diagram.diagramType === 'context') return dfdTemplates;
+		return templates;
+	});
+
+	const visibleTemplates = $derived(showAll ? allTemplates() : allTemplates().slice(0, 4));
+
+	async function applyTemplate(template: DiagramTemplate | FlowchartTemplate | DFDTemplate) {
 		const confirmed = await dialog.confirm({
 			title: 'ใช้เทมเพลต',
 			message: 'ข้อมูลปัจจุบันจะถูกแทนที่ ต้องการดำเนินการต่อหรือไม่?',
@@ -21,8 +29,21 @@
 		if (!confirmed) return;
 
 		diagram.pushHistory('Template');
-		diagram.entities = structuredClone(template.entities);
-		diagram.relationships = structuredClone(template.relationships);
+
+		if (diagram.diagramType === 'flowchart') {
+			const t = template as FlowchartTemplate;
+			diagram.flowNodes = structuredClone(t.flowNodes);
+			diagram.flowEdges = structuredClone(t.flowEdges);
+		} else if (diagram.diagramType === 'context') {
+			const t = template as DFDTemplate;
+			diagram.dfdNodes = structuredClone(t.dfdNodes);
+			diagram.dfdFlows = structuredClone(t.dfdFlows);
+		} else {
+			const t = template as DiagramTemplate;
+			diagram.entities = structuredClone(t.entities);
+			diagram.relationships = structuredClone(t.relationships);
+		}
+
 		onclose();
 	}
 
@@ -117,7 +138,6 @@
 	<!-- Card grid -->
 	<div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 max-sm:landscape:grid-cols-2 max-sm:landscape:gap-2 max-sm:landscape:p-3">
 		{#each visibleTemplates as template}
-			{@const layout = getPreviewLayout(template)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="cursor-pointer rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-3 transition hover:border-[var(--ui-text-muted)] hover:shadow-md max-sm:landscape:p-2"
@@ -126,108 +146,148 @@
 				role="button"
 				tabindex="0"
 			>
-				<!-- Mini ER diagram preview -->
-				<svg
-					class="mb-2 w-full rounded max-sm:landscape:mb-1"
-					style="height: 130px; background: {theme.colors.canvasBg};"
-					viewBox={layout.viewBox}
-					preserveAspectRatio="xMidYMid meet"
-				>
-					<!-- Relationship lines (behind entities) -->
-					{#each template.relationships as rel}
-						{@const fc = layout.centers.get(rel.entityIds[0]) ?? {x:0,y:0}}
-						{@const tc = layout.centers.get(rel.entityIds[1]) ?? {x:0,y:0}}
-						<path
-							d={orthoPath(fc, tc)}
-							fill="none"
-							stroke={theme.colors.relationshipStroke}
-							stroke-width="1.2"
-						/>
-					{/each}
-
-					<!-- Entity cards -->
-					{#each template.entities as entity}
-						{@const c = layout.centers.get(entity.id) ?? {x:0,y:0}}
-						{@const rx = c.x - BOX_W / 2}
-						{@const ry = c.y - BOX_H / 2}
-						{@const attrCount = Math.min(entity.attributes.length, 3)}
-						<!-- Body -->
-						<rect
-							x={rx} y={ry}
-							width={BOX_W} height={BOX_H}
-							rx="4"
-							fill={theme.colors.entityFill}
-							stroke={theme.colors.entityStroke}
-							stroke-width="1.2"
-						/>
-						<!-- Header band -->
-						<rect
-							x={rx} y={ry}
-							width={BOX_W} height={HEADER_H}
-							rx="4"
-							fill={theme.colors.entityHeaderFill}
-						/>
-						<rect
-							x={rx} y={ry + HEADER_H - 5}
-							width={BOX_W} height="5"
-							fill={theme.colors.entityHeaderFill}
-						/>
-						<!-- Header divider -->
-						<line
-							x1={rx} y1={ry + HEADER_H}
-							x2={rx + BOX_W} y2={ry + HEADER_H}
-							stroke={theme.colors.entityStroke}
-							stroke-width="0.6"
-						/>
-						<!-- Entity name -->
-						<text
-							x={c.x} y={ry + HEADER_H / 2 + 0.5}
-							text-anchor="middle"
-							dominant-baseline="middle"
-							font-size="8.5"
-							font-weight="600"
-							font-family="system-ui, sans-serif"
-							fill={theme.colors.entityHeaderText}
-						>{entity.name}</text>
-						<!-- Attribute dots -->
-						{#each { length: attrCount } as _, i}
-							<circle
-								cx={rx + 8}
-								cy={ry + HEADER_H + 8 + i * 8}
-								r="2"
-								fill={i === 0 ? theme.colors.pkColor : theme.colors.attrText}
-							/>
-							<line
-								x1={rx + 14} y1={ry + HEADER_H + 8 + i * 8}
-								x2={rx + 14 + 25 + (i === 0 ? 12 : i * 8)}
-								y2={ry + HEADER_H + 8 + i * 8}
-								stroke={i === 0 ? theme.colors.pkColor : theme.colors.attrText}
-								stroke-width="1.5"
-								stroke-linecap="round"
-								opacity="0.5"
+				{#if diagram.diagramType === 'er'}
+					{@const layout = getPreviewLayout(template)}
+					<!-- Mini ER diagram preview -->
+					<svg
+						class="mb-2 w-full rounded max-sm:landscape:mb-1"
+						style="height: 130px; background: {theme.colors.canvasBg};"
+						viewBox={layout.viewBox}
+						preserveAspectRatio="xMidYMid meet"
+					>
+						<!-- Relationship lines (behind entities) -->
+						{#each template.relationships as rel}
+							{@const fc = layout.centers.get(rel.entityIds[0]) ?? {x:0,y:0}}
+							{@const tc = layout.centers.get(rel.entityIds[1]) ?? {x:0,y:0}}
+							<path
+								d={orthoPath(fc, tc)}
+								fill="none"
+								stroke={theme.colors.relationshipStroke}
+								stroke-width="1.2"
 							/>
 						{/each}
-					{/each}
-				</svg>
 
-				<h3 class="mb-1 text-sm font-medium text-[var(--ui-text)] max-sm:landscape:text-xs max-sm:landscape:mb-0">{template.name}</h3>
-				<p class="mb-2 text-xs leading-relaxed text-[var(--ui-text-muted)] max-sm:landscape:mb-1 max-sm:landscape:text-[10px] max-sm:landscape:leading-snug">{template.description}</p>
-				<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-secondary)] max-sm:landscape:text-[9px]">
-					<span class="flex items-center gap-1">
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-						{template.entities.length} เอนทิตี
-					</span>
-					<span class="flex items-center gap-1">
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
-						{template.relationships.length} ความสัมพันธ์
-					</span>
-				</div>
+						<!-- Entity cards -->
+						{#each template.entities as entity}
+							{@const c = layout.centers.get(entity.id) ?? {x:0,y:0}}
+							{@const rx = c.x - BOX_W / 2}
+							{@const ry = c.y - BOX_H / 2}
+							{@const attrCount = Math.min(entity.attributes.length, 3)}
+							<!-- Body -->
+							<rect
+								x={rx} y={ry}
+								width={BOX_W} height={BOX_H}
+								rx="4"
+								fill={theme.colors.entityFill}
+								stroke={theme.colors.entityStroke}
+								stroke-width="1.2"
+							/>
+							<!-- Header band -->
+							<rect
+								x={rx} y={ry}
+								width={BOX_W} height={HEADER_H}
+								rx="4"
+								fill={theme.colors.entityHeaderFill}
+							/>
+							<rect
+								x={rx} y={ry + HEADER_H - 5}
+								width={BOX_W} height="5"
+								fill={theme.colors.entityHeaderFill}
+							/>
+							<!-- Header divider -->
+							<line
+								x1={rx} y1={ry + HEADER_H}
+								x2={rx + BOX_W} y2={ry + HEADER_H}
+								stroke={theme.colors.entityStroke}
+								stroke-width="0.6"
+							/>
+							<!-- Entity name -->
+							<text
+								x={c.x} y={ry + HEADER_H / 2 + 0.5}
+								text-anchor="middle"
+								dominant-baseline="middle"
+								font-size="8.5"
+								font-weight="600"
+								font-family="system-ui, sans-serif"
+								fill={theme.colors.entityHeaderText}
+							>{entity.name}</text>
+							<!-- Attribute dots -->
+							{#each { length: attrCount } as _, i}
+								<circle
+									cx={rx + 8}
+									cy={ry + HEADER_H + 8 + i * 8}
+									r="2"
+									fill={i === 0 ? theme.colors.pkColor : theme.colors.attrText}
+								/>
+								<line
+									x1={rx + 14} y1={ry + HEADER_H + 8 + i * 8}
+									x2={rx + 14 + 25 + (i === 0 ? 12 : i * 8)}
+									y2={ry + HEADER_H + 8 + i * 8}
+									stroke={i === 0 ? theme.colors.pkColor : theme.colors.attrText}
+									stroke-width="1.5"
+									stroke-linecap="round"
+									opacity="0.5"
+								/>
+							{/each}
+						{/each}
+					</svg>
+
+					<h3 class="mb-1 text-sm font-medium text-[var(--ui-text)] max-sm:landscape:text-xs max-sm:landscape:mb-0">{template.name}</h3>
+					<p class="mb-2 text-xs leading-relaxed text-[var(--ui-text-muted)] max-sm:landscape:mb-1 max-sm:landscape:text-[10px] max-sm:landscape:leading-snug">{template.description}</p>
+					<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-secondary)] max-sm:landscape:text-[9px]">
+						<span class="flex items-center gap-1">
+							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+							{template.entities.length} เอนทิตี
+						</span>
+						<span class="flex items-center gap-1">
+							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+							{template.relationships.length} ความสัมพันธ์
+						</span>
+					</div>
+				{:else}
+					<!-- Simplified preview for Flowchart/DFD -->
+					<div class="mb-2 flex h-[130px] w-full items-center justify-center rounded bg-[var(--ui-bg)] max-sm:landscape:mb-1">
+						{#if diagram.diagramType === 'flowchart'}
+							<svg class="h-20 w-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+							</svg>
+						{:else}
+							<svg class="h-20 w-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+							</svg>
+						{/if}
+					</div>
+
+					<h3 class="mb-1 text-sm font-medium text-[var(--ui-text)] max-sm:landscape:text-xs max-sm:landscape:mb-0">{template.name}</h3>
+					<p class="mb-2 text-xs leading-relaxed text-[var(--ui-text-muted)] max-sm:landscape:mb-1 max-sm:landscape:text-[10px] max-sm:landscape:leading-snug">{template.description}</p>
+					<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-secondary)] max-sm:landscape:text-[9px]">
+						{#if diagram.diagramType === 'flowchart'}
+							<span class="flex items-center gap-1">
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+								{template.flowNodes.length} โหนด
+							</span>
+							<span class="flex items-center gap-1">
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+								{template.flowEdges.length} เส้นเชื่อม
+							</span>
+						{:else}
+							<span class="flex items-center gap-1">
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+								{template.dfdNodes.length} โหนด
+							</span>
+							<span class="flex items-center gap-1">
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+								{template.dfdFlows.length} data flow
+							</span>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
 
 	<!-- Show more / Show less -->
-	{#if templates.length > 4}
+	{#if allTemplates().length > 4}
 		<div class="border-t border-[var(--ui-border)] px-5 py-3 text-center">
 			<button
 				class="text-xs text-[var(--ui-text-muted)] transition hover:text-[var(--ui-text)]"
@@ -236,7 +296,7 @@
 				{#if showAll}
 					แสดงน้อยลง
 				{:else}
-					ดูเพิ่มเติม ({templates.length - 4} เทมเพลต)
+					ดูเพิ่มเติม ({allTemplates().length - 4} เทมเพลต)
 				{/if}
 			</button>
 		</div>
