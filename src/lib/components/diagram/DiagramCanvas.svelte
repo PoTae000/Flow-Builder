@@ -31,13 +31,10 @@
 		const offsets = new Map<string, number>();
 		const groups = new Map<string, FlowEdge[]>();
 
-		// Group edges by from-to pair (bidirectional)
+		// Group edges by from-to pair (DIRECTIONAL - same direction only)
 		for (const edge of diagram.flowEdges) {
-			const key1 = `${edge.fromNodeId}→${edge.toNodeId}`;
-			const key2 = `${edge.toNodeId}→${edge.fromNodeId}`;
-
-			// Use consistent key (alphabetically sorted)
-			const key = key1 < key2 ? key1 : key2;
+			// Use directional key: A→B is different from B→A
+			const key = `${edge.fromNodeId}→${edge.toNodeId}`;
 
 			if (!groups.has(key)) groups.set(key, []);
 			groups.get(key)!.push(edge);
@@ -66,25 +63,22 @@
 		const offsets = new Map<string, number>();
 		const groups = new Map<string, DFDFlow[]>();
 
-		// Group flows by from-to pair (bidirectional)
+		// Group flows by from-to pair (DIRECTIONAL - same direction only)
 		for (const flow of diagram.dfdFlows) {
-			const key1 = `${flow.fromNodeId}→${flow.toNodeId}`;
-			const key2 = `${flow.toNodeId}→${flow.fromNodeId}`;
-
-			// Use consistent key (alphabetically sorted)
-			const key = key1 < key2 ? key1 : key2;
+			// Use directional key: A→B is different from B→A
+			const key = `${flow.fromNodeId}→${flow.toNodeId}`;
 
 			if (!groups.has(key)) groups.set(key, []);
 			groups.get(key)!.push(flow);
 		}
 
 		// Assign offsets to parallel flows
-		const OFFSET_STEP = 12;
+		const OFFSET_STEP = 25; // Increased to match flowchart for consistency
 		for (const [_key, flows] of groups) {
 			if (flows.length === 1) {
 				offsets.set(flows[0].id, 0);
 			} else {
-				const half = Math.floor(flows.length / 2);
+				const half = (flows.length - 1) / 2;
 				flows.forEach((flow, i) => {
 					const offset = (i - half) * OFFSET_STEP;
 					offsets.set(flow.id, offset);
