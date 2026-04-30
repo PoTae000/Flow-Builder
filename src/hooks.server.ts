@@ -8,12 +8,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// instead of raw Host header comparison which is spoofable.
 	if (path.startsWith('/api/')) {
 		const origin = event.request.headers.get('origin');
-		// No Origin header → block (prevents curl/script abuse)
-		if (!origin) {
+		// Allow GET requests without Origin (same-origin GET from fetch often lacks Origin)
+		// Block other methods without Origin (prevents curl/script abuse)
+		if (!origin && event.request.method !== 'GET') {
 			return new Response('Forbidden', { status: 403 });
 		}
 		// Cross-origin → block
-		if (origin !== event.url.origin) {
+		if (origin && origin !== event.url.origin) {
 			return new Response('Forbidden', { status: 403 });
 		}
 	}
@@ -36,8 +37,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// mitigated by the restrictive default-src and other CSP directives.
 	response.headers.set('Content-Security-Policy', [
 		"default-src 'self'",
-		"script-src 'self' accounts.google.com 'unsafe-inline'",
-		"style-src 'self' fonts.googleapis.com 'unsafe-inline'",
+		"script-src 'self' accounts.google.com static.cloudflareinsights.com 'unsafe-inline'",
+		"style-src 'self' fonts.googleapis.com accounts.google.com 'unsafe-inline'",
 		"font-src fonts.gstatic.com",
 		"img-src 'self' data: blob: *.googleusercontent.com",
 		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com wss://signaling.yjs.dev",

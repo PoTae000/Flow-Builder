@@ -44,13 +44,13 @@
 		}
 
 		// Assign offsets to parallel edges
-		const OFFSET_STEP = 12; // pixels to offset each parallel edge
+		const OFFSET_STEP = 25; // pixels to offset each parallel edge (increased for better visibility)
 		for (const [_key, edges] of groups) {
 			if (edges.length === 1) {
 				offsets.set(edges[0].id, 0); // Single edge, no offset
 			} else {
-				// Multiple parallel edges - spread them out
-				const half = Math.floor(edges.length / 2);
+				// Multiple parallel edges - spread them out symmetrically
+				const half = (edges.length - 1) / 2;
 				edges.forEach((edge, i) => {
 					const offset = (i - half) * OFFSET_STEP;
 					offsets.set(edge.id, offset);

@@ -72,14 +72,23 @@
 		const timeout = setTimeout(() => abortController?.abort(), 30000);
 
 		try {
+			let body: any = { targetLang, diagramType: diagram.diagramType };
+
+			if (diagram.diagramType === 'flowchart') {
+				body.flowNodes = $state.snapshot(diagram.flowNodes);
+				body.flowEdges = $state.snapshot(diagram.flowEdges);
+			} else if (diagram.diagramType === 'context') {
+				body.dfdNodes = $state.snapshot(diagram.dfdNodes);
+				body.dfdFlows = $state.snapshot(diagram.dfdFlows);
+			} else {
+				body.entities = $state.snapshot(diagram.entities);
+				body.relationships = $state.snapshot(diagram.relationships);
+			}
+
 			const res = await fetch('/api/translate', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					entities: $state.snapshot(diagram.entities),
-					relationships: $state.snapshot(diagram.relationships),
-					targetLang
-				}),
+				body: JSON.stringify(body),
 				signal: abortController.signal
 			});
 
@@ -170,21 +179,28 @@
 			<!-- Info -->
 			<div class="mb-4 rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-3">
 				<p class="text-xs leading-relaxed text-[var(--ui-text-secondary)]">
-					AI จะแปลชื่อ Entity, Attribute และ Relationship ทั้งหมดเป็น{targetLang === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} แสดง preview ให้ดูก่อนยืนยัน
+					{#if diagram.diagramType === 'flowchart'}
+						AI จะแปลชื่อ Node และ Label ทั้งหมดเป็น{targetLang === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} แสดง preview ให้ดูก่อนยืนยัน
+					{:else if diagram.diagramType === 'context'}
+						AI จะแปลชื่อ Node และ Flow ทั้งหมดเป็น{targetLang === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} แสดง preview ให้ดูก่อนยืนยัน
+					{:else}
+						AI จะแปลชื่อ Entity, Attribute และ Relationship ทั้งหมดเป็น{targetLang === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} แสดง preview ให้ดูก่อนยืนยัน
+					{/if}
 				</p>
 			</div>
 
+			{@const hasData = diagram.diagramType === 'flowchart' ? diagram.flowNodes.length > 0 : diagram.diagramType === 'context' ? diagram.dfdNodes.length > 0 : diagram.entities.length > 0}
 			<button
 				onclick={() => translate()}
-				disabled={diagram.entities.length === 0}
+				disabled={!hasData}
 				class="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-3 py-2.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
 			>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
 				แปล
 			</button>
 
-			{#if diagram.entities.length === 0}
-				<p class="mt-2 text-center text-xs text-[var(--ui-text-muted)]">ยังไม่มี entity ให้แปล</p>
+			{#if !hasData}
+				<p class="mt-2 text-center text-xs text-[var(--ui-text-muted)]">ยังไม่มีข้อมูลให้แปล</p>
 			{/if}
 
 		{:else if loading}

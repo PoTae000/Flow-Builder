@@ -7,9 +7,12 @@
 		onclose: () => void;
 	} = $props();
 
-	type LangId = 'sql-mysql' | 'sql-postgres' | 'sql-sqlite' | 'prisma' | 'typeorm' | 'django' | 'laravel' | 'sequelize';
+	type ERLangId = 'sql-mysql' | 'sql-postgres' | 'sql-sqlite' | 'prisma' | 'typeorm' | 'django' | 'laravel' | 'sequelize';
+	type FlowLangId = 'pseudocode' | 'python' | 'javascript' | 'java' | 'csharp';
+	type DFDLangId = 'data-dictionary' | 'process-specs';
+	type LangId = ERLangId | FlowLangId | DFDLangId;
 
-	const languages: { id: LangId; label: string; icon: string }[] = [
+	const erLanguages: { id: ERLangId; label: string; icon: string }[] = [
 		{ id: 'sql-mysql', label: 'MySQL', icon: '🐬' },
 		{ id: 'sql-postgres', label: 'PostgreSQL', icon: '🐘' },
 		{ id: 'sql-sqlite', label: 'SQLite', icon: '📦' },
@@ -20,7 +23,41 @@
 		{ id: 'sequelize', label: 'Sequelize', icon: 'JS' }
 	];
 
+	const flowLanguages: { id: FlowLangId; label: string; icon: string }[] = [
+		{ id: 'pseudocode', label: 'Pseudocode', icon: '📝' },
+		{ id: 'python', label: 'Python', icon: '🐍' },
+		{ id: 'javascript', label: 'JavaScript', icon: 'JS' },
+		{ id: 'java', label: 'Java', icon: '☕' },
+		{ id: 'csharp', label: 'C#', icon: 'C#' }
+	];
+
+	const dfdLanguages: { id: DFDLangId; label: string; icon: string }[] = [
+		{ id: 'data-dictionary', label: 'Data Dictionary', icon: '📋' },
+		{ id: 'process-specs', label: 'Process Specs', icon: '📄' }
+	];
+
+	const languages = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return flowLanguages;
+		if (diagram.diagramType === 'context') return dfdLanguages;
+		return erLanguages;
+	});
+
 	let selectedLang = $state<LangId>('sql-mysql');
+
+	// Reset selected language when diagram type changes
+	$effect(() => {
+		const langs = languages();
+		if (!langs.find(l => l.id === selectedLang)) {
+			selectedLang = langs[0].id;
+		}
+	});
+
+	const hasData = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return diagram.flowNodes.length > 0;
+		if (diagram.diagramType === 'context') return diagram.dfdNodes.length > 0;
+		return diagram.entities.length > 0;
+	});
+
 	let loading = $state(false);
 	let generatedCode = $state('');
 	let errorMsg = $state('');
@@ -32,14 +69,26 @@
 		generatedCode = '';
 
 		try {
+			let body: any = {
+				language: selectedLang,
+				diagramType: diagram.diagramType
+			};
+
+			if (diagram.diagramType === 'flowchart') {
+				body.flowNodes = $state.snapshot(diagram.flowNodes);
+				body.flowEdges = $state.snapshot(diagram.flowEdges);
+			} else if (diagram.diagramType === 'context') {
+				body.dfdNodes = $state.snapshot(diagram.dfdNodes);
+				body.dfdFlows = $state.snapshot(diagram.dfdFlows);
+			} else {
+				body.entities = $state.snapshot(diagram.entities);
+				body.relationships = $state.snapshot(diagram.relationships);
+			}
+
 			const res = await fetch('/api/generate-code', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					entities: $state.snapshot(diagram.entities),
-					relationships: $state.snapshot(diagram.relationships),
-					language: selectedLang
-				})
+				body: JSON.stringify(body)
 			});
 
 			if (!res.ok) {
@@ -93,7 +142,7 @@
 	<div class="flex min-h-0 flex-1 flex-col p-5">
 		<!-- Language selector -->
 		<div class="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-			{#each languages as lang}
+			{#each languages() as lang}
 				<button
 					onclick={() => { selectedLang = lang.id; generatedCode = ''; }}
 					class="rounded-lg border px-2 py-2 text-center text-xs transition {selectedLang === lang.id
@@ -110,7 +159,7 @@
 		{#if !generatedCode}
 			<button
 				onclick={generate}
-				disabled={loading || diagram.entities.length === 0}
+				disabled={loading || !hasData()}
 				class="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--ui-accent)] px-4 py-2.5 text-xs font-light text-[var(--ui-accent-text)] transition hover:opacity-90 disabled:opacity-50"
 			>
 				{#if loading}

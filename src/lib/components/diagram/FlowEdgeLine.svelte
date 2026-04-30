@@ -81,33 +81,23 @@
 		let pts: { x: number; y: number }[];
 
 		if (fromSide === 'bottom' || fromSide === 'top') {
-			const midY = (fp.y + tp.y) / 2;
-			if (fp.x === tp.x) {
-				// Straight vertical line - offset horizontally
-				pts = [fp, tp].map(p => ({ x: p.x + offset, y: p.y }));
-			} else {
-				// Orthogonal path - offset the middle horizontal segment
-				pts = [
-					fp,
-					{ x: fp.x + offset, y: midY },
-					{ x: tp.x + offset, y: midY },
-					tp
-				];
-			}
+			const midY = (fp.y + tp.y) / 2 + offset;
+			// Vertical connections: all segments must be axis-aligned
+			pts = [
+				{ x: fp.x, y: fp.y },
+				{ x: fp.x, y: midY },
+				{ x: tp.x, y: midY },
+				{ x: tp.x, y: tp.y }
+			];
 		} else {
-			const midX = (fp.x + tp.x) / 2;
-			if (fp.y === tp.y) {
-				// Straight horizontal line - offset vertically
-				pts = [fp, tp].map(p => ({ x: p.x, y: p.y + offset }));
-			} else {
-				// Orthogonal path - offset the middle vertical segment
-				pts = [
-					fp,
-					{ x: midX, y: fp.y + offset },
-					{ x: midX, y: tp.y + offset },
-					tp
-				];
-			}
+			const midX = (fp.x + tp.x) / 2 + offset;
+			// Horizontal connections: all segments must be axis-aligned
+			pts = [
+				{ x: fp.x, y: fp.y },
+				{ x: midX, y: fp.y },
+				{ x: midX, y: tp.y },
+				{ x: tp.x, y: tp.y }
+			];
 		}
 
 		return pts;

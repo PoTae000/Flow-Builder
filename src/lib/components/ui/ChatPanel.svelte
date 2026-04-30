@@ -94,14 +94,27 @@
 			// Build messages array for API (strip sender info)
 			const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
 
+			// Build type-aware request body
+			let body: any = {
+				messages: apiMessages,
+				diagramType: diagram.diagramType
+			};
+
+			if (diagram.diagramType === 'flowchart') {
+				body.flowNodes = $state.snapshot(diagram.flowNodes);
+				body.flowEdges = $state.snapshot(diagram.flowEdges);
+			} else if (diagram.diagramType === 'context') {
+				body.dfdNodes = $state.snapshot(diagram.dfdNodes);
+				body.dfdFlows = $state.snapshot(diagram.dfdFlows);
+			} else {
+				body.entities = $state.snapshot(diagram.entities);
+				body.relationships = $state.snapshot(diagram.relationships);
+			}
+
 			const res = await fetch('/api/chat', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					messages: apiMessages,
-					entities: $state.snapshot(diagram.entities),
-					relationships: $state.snapshot(diagram.relationships)
-				})
+				body: JSON.stringify(body)
 			});
 
 			let reply = 'ขอโทษ ตอบไม่ได้ตอนนี้ ลองใหม่นะ';

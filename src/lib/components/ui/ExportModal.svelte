@@ -2,7 +2,7 @@
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { exportSvg, exportPng, exportJson, exportErd, exportPdf, exportPdfEnhanced, estimatePdfInfo, generateDiagramThumbnail } from '$lib/utils/export';
 	import type { PdfExportOptions } from '$lib/utils/export';
-	import { generateMarkdownDocs } from '$lib/utils/docs-generator';
+	import { generateMarkdownDocs, generateFlowchartMarkdown, generateDFDMarkdown } from '$lib/utils/docs-generator';
 	import { generateShareUrl } from '$lib/utils/share';
 	import type { DiagramData } from '$lib/types/session';
 
@@ -128,15 +128,32 @@
 	}
 
 	function handleExportDocs() {
-		const md = generateMarkdownDocs(
-			$state.snapshot(diagram.entities),
-			$state.snapshot(diagram.relationships)
-		);
+		let md: string;
+
+		if (diagram.diagramType === 'flowchart') {
+			md = generateFlowchartMarkdown(
+				$state.snapshot(diagram.flowNodes),
+				$state.snapshot(diagram.flowEdges)
+			);
+		} else if (diagram.diagramType === 'context') {
+			md = generateDFDMarkdown(
+				$state.snapshot(diagram.dfdNodes),
+				$state.snapshot(diagram.dfdFlows)
+			);
+		} else {
+			md = generateMarkdownDocs(
+				$state.snapshot(diagram.entities),
+				$state.snapshot(diagram.relationships)
+			);
+		}
+
 		const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `${filename || 'er-diagram'}.md`;
+		const defaultName = diagram.diagramType === 'flowchart' ? 'flowchart' :
+		                    diagram.diagramType === 'context' ? 'dfd' : 'er-diagram';
+		a.download = `${filename || defaultName}.md`;
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
@@ -146,10 +163,22 @@
 	}
 
 	function generatePreview() {
-		docsPreview = generateMarkdownDocs(
-			$state.snapshot(diagram.entities),
-			$state.snapshot(diagram.relationships)
-		);
+		if (diagram.diagramType === 'flowchart') {
+			docsPreview = generateFlowchartMarkdown(
+				$state.snapshot(diagram.flowNodes),
+				$state.snapshot(diagram.flowEdges)
+			);
+		} else if (diagram.diagramType === 'context') {
+			docsPreview = generateDFDMarkdown(
+				$state.snapshot(diagram.dfdNodes),
+				$state.snapshot(diagram.dfdFlows)
+			);
+		} else {
+			docsPreview = generateMarkdownDocs(
+				$state.snapshot(diagram.entities),
+				$state.snapshot(diagram.relationships)
+			);
+		}
 	}
 
 	async function handleExport() {

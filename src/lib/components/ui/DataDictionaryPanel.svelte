@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { diagram } from '$lib/stores/diagram.svelte';
-	import { generateMarkdownDocs } from '$lib/utils/docs-generator';
+	import { generateMarkdownDocs, generateFlowchartMarkdown, generateDFDMarkdown } from '$lib/utils/docs-generator';
 
 	let {
 		onclose
@@ -74,10 +74,25 @@
 	}
 
 	async function copyMarkdown() {
-		const md = generateMarkdownDocs(
-			$state.snapshot(diagram.entities),
-			$state.snapshot(diagram.relationships)
-		);
+		let md: string;
+
+		if (diagram.diagramType === 'flowchart') {
+			md = generateFlowchartMarkdown(
+				$state.snapshot(diagram.flowNodes),
+				$state.snapshot(diagram.flowEdges)
+			);
+		} else if (diagram.diagramType === 'context') {
+			md = generateDFDMarkdown(
+				$state.snapshot(diagram.dfdNodes),
+				$state.snapshot(diagram.dfdFlows)
+			);
+		} else {
+			md = generateMarkdownDocs(
+				$state.snapshot(diagram.entities),
+				$state.snapshot(diagram.relationships)
+			);
+		}
+
 		await navigator.clipboard.writeText(md);
 		copied = true;
 		setTimeout(() => copied = false, 2000);

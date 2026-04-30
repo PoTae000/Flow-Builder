@@ -1,9 +1,19 @@
 <script lang="ts">
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
-	import { convertAiDataToDiagram } from '$lib/utils/import-adapter';
-	import type { AiParsedData } from '$lib/utils/import-adapter';
-	import type { ImportedDiagramData } from '$lib/utils/import-adapter';
+	import {
+		convertAiDataToDiagram,
+		convertAiFlowchartToDiagram,
+		convertAiDFDToDiagram
+	} from '$lib/utils/import-adapter';
+	import type {
+		AiParsedData,
+		AiParsedFlowchart,
+		AiParsedDFD,
+		ImportedDiagramData,
+		ImportedFlowchartData,
+		ImportedDFDData
+	} from '$lib/utils/import-adapter';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -11,7 +21,7 @@
 	let generating = $state(false);
 	let errorMsg = $state('');
 	let aiAvailable = $state<boolean | null>(null);
-	let preview = $state<ImportedDiagramData | null>(null);
+	let preview = $state<ImportedDiagramData | ImportedFlowchartData | ImportedDFDData | null>(null);
 
 	const suggestions = [
 		'E-Commerce',
@@ -56,7 +66,10 @@
 			const res = await fetch('/api/domain-starter', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ domain: d })
+				body: JSON.stringify({
+					domain: d,
+					diagramType: diagram.diagramType
+				})
 			});
 
 			if (!res.ok) {
@@ -64,10 +77,19 @@
 				throw new Error(errData.message || `Error: ${res.status}`);
 			}
 
-			const data: AiParsedData = await res.json();
-			preview = convertAiDataToDiagram(data);
+			if (diagram.diagramType === 'flowchart') {
+				const data: AiParsedFlowchart = await res.json();
+				preview = convertAiFlowchartToDiagram(data);
+			} else if (diagram.diagramType === 'context') {
+				const data: AiParsedDFD = await res.json();
+				preview = convertAiDFDToDiagram(data);
+			} else {
+				const data: AiParsedData = await res.json();
+				preview = convertAiDataToDiagram(data);
+			}
 		} catch (err) {
-			errorMsg = err instanceof Error ? err.message : 'ไม่สามารถสร้าง ER Diagram ได้';
+			const typeName = diagram.diagramType === 'flowchart' ? 'Flowchart' : diagram.diagramType === 'context' ? 'DFD' : 'ER Diagram';
+			errorMsg = err instanceof Error ? err.message : `ไม่สามารถสร้าง ${typeName} ได้`;
 		} finally {
 			generating = false;
 		}
@@ -76,7 +98,14 @@
 	async function applyDiagram() {
 		if (!preview) return;
 
-		if (diagram.entities.length > 0) {
+		// Check if current diagram has data
+		const hasData = diagram.diagramType === 'flowchart'
+			? diagram.flowNodes.length > 0
+			: diagram.diagramType === 'context'
+			? diagram.dfdNodes.length > 0
+			: diagram.entities.length > 0;
+
+		if (hasData) {
 			const confirmed = await dialog.confirm({
 				title: 'แทนที่ Diagram',
 				message: 'ข้อมูลปัจจุบันจะถูกแทนที่ ต้องการดำเนินการต่อหรือไม่?',
@@ -88,8 +117,21 @@
 		}
 
 		diagram.pushHistory('Domain Starter');
-		diagram.entities = JSON.parse(JSON.stringify(preview.entities));
-		diagram.relationships = JSON.parse(JSON.stringify(preview.relationships));
+
+		if (diagram.diagramType === 'flowchart') {
+			const flowData = preview as ImportedFlowchartData;
+			diagram.flowNodes = JSON.parse(JSON.stringify(flowData.flowNodes));
+			diagram.flowEdges = JSON.parse(JSON.stringify(flowData.flowEdges));
+		} else if (diagram.diagramType === 'context') {
+			const dfdData = preview as ImportedDFDData;
+			diagram.dfdNodes = JSON.parse(JSON.stringify(dfdData.dfdNodes));
+			diagram.dfdFlows = JSON.parse(JSON.stringify(dfdData.dfdFlows));
+		} else {
+			const erData = preview as ImportedDiagramData;
+			diagram.entities = JSON.parse(JSON.stringify(erData.entities));
+			diagram.relationships = JSON.parse(JSON.stringify(erData.relationships));
+		}
+
 		diagram.autoLayout();
 		onclose();
 	}
@@ -184,30 +226,67 @@
 				<div class="flex items-center justify-between">
 					<span class="text-xs font-medium text-[var(--ui-text)]">ผลลัพธ์</span>
 					<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-muted)]">
-						<span>{preview.entities.length} เอนทิตี</span>
-						<span>{preview.relationships.length} ความสัมพันธ์</span>
+						{#if diagram.diagramType === 'flowchart'}
+							{@const flowData = preview as ImportedFlowchartData}
+							<span>{flowData.flowNodes.length} โหนด</span>
+							<span>{flowData.flowEdges.length} เส้นเชื่อม</span>
+						{:else if diagram.diagramType === 'context'}
+							{@const dfdData = preview as ImportedDFDData}
+							<span>{dfdData.dfdNodes.length} โหนด</span>
+							<span>{dfdData.dfdFlows.length} กระแสข้อมูล</span>
+						{:else}
+							{@const erData = preview as ImportedDiagramData}
+							<span>{erData.entities.length} เอนทิตี</span>
+							<span>{erData.relationships.length} ความสัมพันธ์</span>
+						{/if}
 					</div>
 				</div>
 
-				<!-- Entity list -->
+				<!-- Preview list -->
 				<div class="flex flex-col gap-2 max-h-52 overflow-y-auto">
-					{#each preview.entities as entity}
-						<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-3 py-2">
-							<div class="flex items-center gap-1.5">
-								<span class="text-xs font-medium text-[var(--ui-text)]">{entity.name}</span>
-								{#if entity.isWeak}
-									<span class="rounded bg-yellow-100 dark:bg-yellow-900/30 px-1 text-[9px] text-yellow-600 dark:text-yellow-400">weak</span>
-								{/if}
+					{#if diagram.diagramType === 'flowchart'}
+						{@const flowData = preview as ImportedFlowchartData}
+						{#each flowData.flowNodes as node}
+							<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-3 py-2">
+								<div class="flex items-center gap-1.5">
+									<span class="text-xs font-medium text-[var(--ui-text)]">{node.name}</span>
+									<span class="rounded bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-[9px] text-blue-600 dark:text-blue-400">{node.type}</span>
+								</div>
 							</div>
-							<div class="mt-1 flex flex-wrap gap-1">
-								{#each entity.attributes as attr}
-									<span class="rounded bg-[var(--ui-bg-secondary)] px-1.5 py-0.5 text-[10px] text-[var(--ui-text-muted)] {attr.type === 'primary_key' ? '!text-blue-500 font-medium' : ''} {attr.type === 'foreign_key' ? '!text-green-500' : ''}">
-										{attr.type === 'primary_key' ? 'PK ' : ''}{attr.type === 'foreign_key' ? 'FK ' : ''}{attr.name}
-									</span>
-								{/each}
+						{/each}
+					{:else if diagram.diagramType === 'context'}
+						{@const dfdData = preview as ImportedDFDData}
+						{#each dfdData.dfdNodes as node}
+							<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-3 py-2">
+								<div class="flex items-center gap-1.5">
+									{#if node.processNumber}
+										<span class="text-[10px] text-[var(--ui-text-muted)]">{node.processNumber}</span>
+									{/if}
+									<span class="text-xs font-medium text-[var(--ui-text)]">{node.name}</span>
+									<span class="rounded bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 text-[9px] text-green-600 dark:text-green-400">{node.type}</span>
+								</div>
 							</div>
-						</div>
-					{/each}
+						{/each}
+					{:else}
+						{@const erData = preview as ImportedDiagramData}
+						{#each erData.entities as entity}
+							<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-3 py-2">
+								<div class="flex items-center gap-1.5">
+									<span class="text-xs font-medium text-[var(--ui-text)]">{entity.name}</span>
+									{#if entity.isWeak}
+										<span class="rounded bg-yellow-100 dark:bg-yellow-900/30 px-1 text-[9px] text-yellow-600 dark:text-yellow-400">weak</span>
+									{/if}
+								</div>
+								<div class="mt-1 flex flex-wrap gap-1">
+									{#each entity.attributes as attr}
+										<span class="rounded bg-[var(--ui-bg-secondary)] px-1.5 py-0.5 text-[10px] text-[var(--ui-text-muted)] {attr.type === 'primary_key' ? '!text-blue-500 font-medium' : ''} {attr.type === 'foreign_key' ? '!text-green-500' : ''}">
+											{attr.type === 'primary_key' ? 'PK ' : ''}{attr.type === 'foreign_key' ? 'FK ' : ''}{attr.name}
+										</span>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					{/if}
 				</div>
 
 				<!-- Apply button -->

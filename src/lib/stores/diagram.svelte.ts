@@ -1206,26 +1206,66 @@ export class DiagramState {
 		relationships: Record<string, string>;
 	}) {
 		this.pushHistory();
-		for (const entity of this.entities) {
-			if (mapping.entities[entity.name]) {
-				entity.name = mapping.entities[entity.name];
-			}
-			for (const attr of entity.attributes) {
-				if (mapping.attributes[attr.name]) {
-					attr.name = mapping.attributes[attr.name];
+
+		if (this.diagramType === 'flowchart') {
+			// Translate flowchart nodes and edge labels
+			for (const node of this.flowNodes) {
+				if (mapping.entities[node.name]) {
+					node.name = mapping.entities[node.name];
 				}
 			}
-		}
-		for (const rel of this.relationships) {
-			if (mapping.relationships[rel.name]) {
-				rel.name = mapping.relationships[rel.name];
+			for (const edge of this.flowEdges) {
+				if (edge.label && mapping.attributes[edge.label]) {
+					edge.label = mapping.attributes[edge.label];
+				}
 			}
-		}
-		// Sync translation to collaborators
-		const c = getCollab();
-		if (c) {
-			for (const e of this.entities) c.pushEntityChange(e);
-			for (const r of this.relationships) c.pushRelationshipChange(r);
+			// Sync to collaborators
+			const c = getCollab();
+			if (c) {
+				for (const n of this.flowNodes) c.pushFlowNodeChange(n);
+				for (const e of this.flowEdges) c.pushFlowEdgeChange(e);
+			}
+		} else if (this.diagramType === 'context') {
+			// Translate DFD nodes and flow labels
+			for (const node of this.dfdNodes) {
+				if (mapping.entities[node.name]) {
+					node.name = mapping.entities[node.name];
+				}
+			}
+			for (const flow of this.dfdFlows) {
+				if (flow.label && mapping.attributes[flow.label]) {
+					flow.label = mapping.attributes[flow.label];
+				}
+			}
+			// Sync to collaborators
+			const c = getCollab();
+			if (c) {
+				for (const n of this.dfdNodes) c.pushDFDNodeChange(n);
+				for (const f of this.dfdFlows) c.pushDFDFlowChange(f);
+			}
+		} else {
+			// Translate ER diagram entities, attributes, relationships
+			for (const entity of this.entities) {
+				if (mapping.entities[entity.name]) {
+					entity.name = mapping.entities[entity.name];
+				}
+				for (const attr of entity.attributes) {
+					if (mapping.attributes[attr.name]) {
+						attr.name = mapping.attributes[attr.name];
+					}
+				}
+			}
+			for (const rel of this.relationships) {
+				if (mapping.relationships[rel.name]) {
+					rel.name = mapping.relationships[rel.name];
+				}
+			}
+			// Sync to collaborators
+			const c = getCollab();
+			if (c) {
+				for (const e of this.entities) c.pushEntityChange(e);
+				for (const r of this.relationships) c.pushRelationshipChange(r);
+			}
 		}
 	}
 
