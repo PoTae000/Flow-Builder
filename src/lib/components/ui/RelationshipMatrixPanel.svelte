@@ -20,15 +20,36 @@
 	let newRelCard1 = $state<CardinalityType>('1');
 	let newRelCard2 = $state<CardinalityType>('N');
 
+	// Type-aware node list and connection count
+	const nodes = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return diagram.flowNodes;
+		if (diagram.diagramType === 'context') return diagram.dfdNodes;
+		return diagram.entities;
+	});
+
+	const connections = $derived(() => {
+		if (diagram.diagramType === 'flowchart') return diagram.flowEdges;
+		if (diagram.diagramType === 'context') return diagram.dfdFlows;
+		return diagram.relationships;
+	});
+
 	const entityRelCount = $derived(
-		new Map(diagram.entities.map(e => [
-			e.id,
-			diagram.relationships.filter(r => r.entityIds[0] === e.id || r.entityIds[1] === e.id).length
+		new Map(nodes().map(n => [
+			n.id,
+			connections().filter(c => {
+				if (diagram.diagramType === 'flowchart') {
+					return c.fromNode === n.id || c.toNode === n.id;
+				} else if (diagram.diagramType === 'context') {
+					return c.fromNode === n.id || c.toNode === n.id;
+				} else {
+					return c.entityIds[0] === n.id || c.entityIds[1] === n.id;
+				}
+			}).length
 		]))
 	);
 
 	const sortedEntities = $derived.by(() => {
-		const list = [...diagram.entities];
+		const list = [...nodes()];
 		if (sortBy === 'name') {
 			list.sort((a, b) => sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
 		} else {
@@ -42,14 +63,25 @@
 	});
 
 	const relationshipMatrix = $derived.by(() => {
-		const map = new Map<string, typeof diagram.relationships>();
-		for (const rel of diagram.relationships) {
-			const key1 = `${rel.entityIds[0]}:${rel.entityIds[1]}`;
-			const key2 = `${rel.entityIds[1]}:${rel.entityIds[0]}`;
+		const map = new Map<string, any[]>();
+		for (const conn of connections()) {
+			let id1: string, id2: string;
+			if (diagram.diagramType === 'flowchart') {
+				id1 = conn.fromNode;
+				id2 = conn.toNode;
+			} else if (diagram.diagramType === 'context') {
+				id1 = conn.fromNode;
+				id2 = conn.toNode;
+			} else {
+				id1 = conn.entityIds[0];
+				id2 = conn.entityIds[1];
+			}
+			const key1 = `${id1}:${id2}`;
+			const key2 = `${id2}:${id1}`;
 			if (!map.has(key1)) map.set(key1, []);
 			if (!map.has(key2)) map.set(key2, []);
-			map.get(key1)!.push(rel);
-			map.get(key2)!.push(rel);
+			map.get(key1)!.push(conn);
+			map.get(key2)!.push(conn);
 		}
 		return map;
 	});
