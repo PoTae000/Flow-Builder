@@ -41,7 +41,7 @@
 		}
 
 		// Assign offsets to parallel edges
-		const OFFSET_STEP = 25; // pixels to offset each parallel edge (increased for better visibility)
+		const OFFSET_STEP = 40; // pixels to offset each parallel edge (increased to prevent overlap)
 		for (const [_key, edges] of groups) {
 			if (edges.length === 1) {
 				offsets.set(edges[0].id, 0); // Single edge, no offset
@@ -73,7 +73,7 @@
 		}
 
 		// Assign offsets to parallel flows
-		const OFFSET_STEP = 25; // Increased to match flowchart for consistency
+		const OFFSET_STEP = 40; // Increased to prevent overlap
 		for (const [_key, flows] of groups) {
 			if (flows.length === 1) {
 				offsets.set(flows[0].id, 0);
