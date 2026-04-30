@@ -55,52 +55,45 @@
 		const absDx = Math.abs(dx);
 		const absDy = Math.abs(dy);
 
-		// Loop-back detection: edge goes upward while nodes are horizontally close
-		// Route around the right side in a "C" shape to avoid crossing nodes in between
-		if (dy < -NODE_H && absDx < NODE_W * 1.5) {
-			const fp = getPort(fromNode, 'right');
-			const tp = getPort(toNode, 'right');
-			const loopX = Math.max(fp.x, tp.x) + LOOP_OFFSET + offset;
-			return [fp, { x: loopX, y: fp.y }, { x: loopX, y: tp.y }, tp];
-		}
-
+		// Determine connection sides based on relative positions
 		let fromSide: 'top' | 'bottom' | 'left' | 'right';
 		let toSide: 'top' | 'bottom' | 'left' | 'right';
 
-		if (absDy >= absDx) {
-			if (dy > 0) { fromSide = 'bottom'; toSide = 'top'; }
-			else { fromSide = 'top'; toSide = 'bottom'; }
+		// Choose sides based on which direction has more distance
+		if (absDy > absDx) {
+			// More vertical distance - use top/bottom connections
+			fromSide = dy > 0 ? 'bottom' : 'top';
+			toSide = dy > 0 ? 'top' : 'bottom';
 		} else {
-			if (dx > 0) { fromSide = 'right'; toSide = 'left'; }
-			else { fromSide = 'left'; toSide = 'right'; }
+			// More horizontal distance - use left/right connections
+			fromSide = dx > 0 ? 'right' : 'left';
+			toSide = dx > 0 ? 'left' : 'right';
 		}
 
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		let pts: { x: number; y: number }[];
-
-		if (fromSide === 'bottom' || fromSide === 'top') {
+		// Create orthogonal path with 3 segments (4 points)
+		// The middle point is offset to separate parallel edges
+		if (fromSide === 'top' || fromSide === 'bottom') {
+			// Vertical exit: go vertical first, then horizontal, then vertical
 			const midY = (fp.y + tp.y) / 2 + offset;
-			// Vertical connections: all segments must be axis-aligned
-			pts = [
-				{ x: fp.x, y: fp.y },
+			return [
+				fp,
 				{ x: fp.x, y: midY },
 				{ x: tp.x, y: midY },
-				{ x: tp.x, y: tp.y }
+				tp
 			];
 		} else {
+			// Horizontal exit: go horizontal first, then vertical, then horizontal
 			const midX = (fp.x + tp.x) / 2 + offset;
-			// Horizontal connections: all segments must be axis-aligned
-			pts = [
-				{ x: fp.x, y: fp.y },
+			return [
+				fp,
 				{ x: midX, y: fp.y },
 				{ x: midX, y: tp.y },
-				{ x: tp.x, y: tp.y }
+				tp
 			];
 		}
-
-		return pts;
 	});
 
 	const pathD = $derived(
@@ -153,8 +146,9 @@
 		{@const text = edge.condition === 'yes' ? 'yes' : 'no'}
 		<text
 			x={badgePos.x}
-			y={badgePos.y - 8}
+			y={badgePos.y}
 			text-anchor="middle"
+			dominant-baseline="middle"
 			fill={colors.relationshipText}
 			font-size="11"
 			font-style="italic"
