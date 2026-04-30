@@ -52,20 +52,43 @@
 	const route = $derived.by(() => {
 		const dx = toNode.position.x - fromNode.position.x;
 		const dy = toNode.position.y - fromNode.position.y;
-		const absDx = Math.abs(dx);
-		const absDy = Math.abs(dy);
 
-		// Determine connection sides based on relative positions
+		// Determine connection sides based on flowchart conventions:
+		// - Prefer top-to-bottom flow (arrow points down)
+		// - Use left-to-right for horizontal flow (arrow points right)
+		// - Only use upward flow for loops (arrow points up)
+
 		let fromSide: 'top' | 'bottom' | 'left' | 'right';
 		let toSide: 'top' | 'bottom' | 'left' | 'right';
 
-		// Choose sides based on which direction has more distance
-		if (absDy > absDx) {
-			// More vertical distance - use top/bottom connections
-			fromSide = dy > 0 ? 'bottom' : 'top';
-			toSide = dy > 0 ? 'top' : 'bottom';
+		// Check if this is a loop (target is above source)
+		const isLoop = dy < -NODE_H;
+
+		if (isLoop) {
+			// Loop: route around the side
+			const useRight = dx >= 0;
+			fromSide = useRight ? 'right' : 'left';
+			toSide = useRight ? 'right' : 'left';
+
+			const fp = getPort(fromNode, fromSide);
+			const tp = getPort(toNode, toSide);
+			const sideX = (useRight ? Math.max(fp.x, tp.x) : Math.min(fp.x, tp.x)) + (useRight ? LOOP_OFFSET : -LOOP_OFFSET) + offset;
+
+			return [
+				fp,
+				{ x: sideX, y: fp.y },
+				{ x: sideX, y: tp.y },
+				tp
+			];
+		}
+
+		// Normal flow: prefer downward (top-to-bottom)
+		if (dy > 0) {
+			// Target is below: use top-to-bottom flow (arrow points down)
+			fromSide = 'bottom';
+			toSide = 'top';
 		} else {
-			// More horizontal distance - use left/right connections
+			// Target is at same level or slightly above: use horizontal flow
 			fromSide = dx > 0 ? 'right' : 'left';
 			toSide = dx > 0 ? 'left' : 'right';
 		}
@@ -73,10 +96,9 @@
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Create orthogonal path with 3 segments (4 points)
-		// The middle point is offset to separate parallel edges
-		if (fromSide === 'top' || fromSide === 'bottom') {
-			// Vertical exit: go vertical first, then horizontal, then vertical
+		// Create orthogonal path
+		if (fromSide === 'bottom') {
+			// Top-to-bottom: go down, then horizontal, then down (arrow points DOWN)
 			const midY = (fp.y + tp.y) / 2 + offset;
 			return [
 				fp,
@@ -85,7 +107,7 @@
 				tp
 			];
 		} else {
-			// Horizontal exit: go horizontal first, then vertical, then horizontal
+			// Left-to-right: go horizontal, then down, then horizontal (arrow points RIGHT)
 			const midX = (fp.x + tp.x) / 2 + offset;
 			return [
 				fp,
@@ -189,8 +211,8 @@
 		</text>
 	{/if}
 
-	<!-- Label -->
-	{#if edge.label}
+	<!-- Label (only show if no condition label) -->
+	{#if edge.label && !edge.condition}
 		<rect
 			x={labelPos.x - edge.label.length * 3.5 - 4}
 			y={labelPos.y - 10}
