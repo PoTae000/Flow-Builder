@@ -1,32 +1,16 @@
+import { diagram } from '$lib/stores/diagram.svelte';
+
 const EXPORT_PADDING = 40;
 
 // Font embedding cache — keyed by font family so switching fonts works correctly
 const fontCssCache = new Map<string, string>();
 
 /**
- * Fetch Google Fonts CSS, download each woff2 file,
+ * Fetch Google Fonts CSS from a URL, download each woff2 file,
  * convert to base64 data URI, and return self-contained CSS.
  */
-async function getEmbeddedFontCss(fontFamily: string): Promise<string> {
-	const cached = fontCssCache.get(fontFamily);
-	if (cached) return cached;
-
-	// Evict oldest entry to prevent unbounded growth in long sessions
-	if (fontCssCache.size >= 20) {
-		const firstKey = fontCssCache.keys().next().value;
-		if (firstKey) fontCssCache.delete(firstKey);
-	}
-
+async function fetchAndEmbedFontCss(cssUrl: string): Promise<string> {
 	try {
-		// Determine which Google Font to load based on diagram font setting
-		let fontName = 'Sarabun';
-		if (fontFamily.includes('Kanit')) fontName = 'Kanit';
-		else if (fontFamily.includes('Prompt')) fontName = 'Prompt';
-		else if (fontFamily.includes('Noto Sans Thai')) fontName = 'Noto+Sans+Thai';
-		else if (fontFamily.includes('Sarabun')) fontName = 'Sarabun';
-
-		// Fetch CSS from Google Fonts (woff2 format via user-agent)
-		const cssUrl = `https://fonts.googleapis.com/css2?family=${fontName}:wght@300;400;500;700&display=swap`;
 		const cssRes = await fetch(cssUrl, {
 			headers: {
 				// Chrome user-agent to get woff2 format
@@ -58,6 +42,53 @@ async function getEmbeddedFontCss(fontFamily: string): Promise<string> {
 				// Skip failed font files
 			}
 		}
+
+		return css;
+	} catch {
+		return '';
+	}
+}
+
+/**
+ * Fetch Google Fonts CSS, download each woff2 file,
+ * convert to base64 data URI, and return self-contained CSS.
+ */
+async function getEmbeddedFontCss(fontFamily: string): Promise<string> {
+	const cached = fontCssCache.get(fontFamily);
+	if (cached) return cached;
+
+	// Evict oldest entry to prevent unbounded growth in long sessions
+	if (fontCssCache.size >= 20) {
+		const firstKey = fontCssCache.keys().next().value;
+		if (firstKey) fontCssCache.delete(firstKey);
+	}
+
+	// Check if fontFamily matches a custom font — use its stored URL directly
+	const customFont = diagram.customFonts.find(f => fontFamily.includes(f.label));
+	if (customFont) {
+		const css = await fetchAndEmbedFontCss(customFont.url);
+		if (css) {
+			fontCssCache.set(fontFamily, css);
+			return css;
+		}
+	}
+
+	try {
+		// Determine which Google Font to load based on diagram font setting
+		let fontName = 'Sarabun';
+		if (fontFamily.includes('Kanit')) fontName = 'Kanit';
+		else if (fontFamily.includes('Prompt')) fontName = 'Prompt';
+		else if (fontFamily.includes('Noto Sans Thai')) fontName = 'Noto+Sans+Thai';
+		else if (fontFamily.includes('Sarabun')) fontName = 'Sarabun';
+		else {
+			// Try to extract font name from CSS value like "'FontName', sans-serif"
+			const nameMatch = fontFamily.match(/'([^']+)'/);
+			if (nameMatch) fontName = nameMatch[1].replace(/\s+/g, '+');
+		}
+
+		// Fetch CSS from Google Fonts (woff2 format via user-agent)
+		const cssUrl = `https://fonts.googleapis.com/css2?family=${fontName}:wght@300;400;500;700&display=swap`;
+		const css = await fetchAndEmbedFontCss(cssUrl);
 
 		fontCssCache.set(fontFamily, css);
 		return css;
@@ -128,6 +159,9 @@ function prepareExportSvg(svgEl: SVGSVGElement, embeddedFontCss: string): { clon
 
 	clone.removeAttribute('class');
 	clone.style.background = '';
+
+	// Remove hidden measurement paths (from DataFlowParticles)
+	clone.querySelectorAll('path[style*="display: none"]').forEach(p => p.remove());
 
 	const bgRect = clone.querySelector('.canvas-bg');
 	if (bgRect) {

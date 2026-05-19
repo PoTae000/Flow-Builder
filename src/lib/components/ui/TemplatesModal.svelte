@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { templates, flowchartTemplates, dfdTemplates } from '$lib/data/templates';
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { collab } from '$lib/stores/collab.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import type { DiagramTemplate, FlowchartTemplate, DFDTemplate } from '$lib/data/templates';
@@ -43,6 +44,9 @@
 			diagram.entities = structuredClone(t.entities);
 			diagram.relationships = structuredClone(t.relationships);
 		}
+
+		// Sync to collaborators
+		if (collab.connected) collab.pushFullState();
 
 		onclose();
 	}

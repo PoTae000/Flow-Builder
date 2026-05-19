@@ -13,7 +13,8 @@
 		index,
 		totalAttributes,
 		occupiedSides = [],
-		screenToSvg
+		screenToSvg,
+		animateIn = false
 	}: {
 		attribute: Attribute;
 		entityRect: Rect;
@@ -22,6 +23,7 @@
 		totalAttributes: number;
 		occupiedSides?: string[];
 		screenToSvg: (clientX: number, clientY: number) => { x: number; y: number };
+		animateIn?: boolean;
 	} = $props();
 
 	const colors = $derived(theme.colors);
@@ -205,7 +207,8 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <g
 	class="chen-attribute"
-	style="cursor: {dragging ? 'grabbing' : 'grab'};"
+	class:animate-in={animateIn}
+	style="cursor: {dragging ? 'grabbing' : 'grab'};{animateIn ? `animation-delay: ${index * 60}ms;` : ''}"
 	onmousedown={handleMouseDown}
 	ontouchstart={handleTouchStart}
 	ondblclick={handleDblClick}
@@ -259,3 +262,17 @@
 		{attribute.name}
 	</text>
 </g>
+
+<style>
+	@keyframes ovalBurst {
+		0% { opacity: 0; transform: scale(0) translateY(0); }
+		60% { opacity: 1; transform: scale(1.15); }
+		100% { opacity: 1; transform: scale(1); }
+	}
+	.chen-attribute.animate-in {
+		opacity: 0;
+		transform-origin: center;
+		transform-box: fill-box;
+		animation: ovalBurst 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+	}
+</style>

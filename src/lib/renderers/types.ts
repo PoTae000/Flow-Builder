@@ -50,4 +50,7 @@ export interface NotationRenderer {
 
 	/** Entity padding */
 	padding: number;
+
+	/** Whether this notation uses an oval shape for the relationship label (e.g. Merise) */
+	useOvalRelationshipLabel?: boolean;
 }

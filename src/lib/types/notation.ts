@@ -1,4 +1,4 @@
-export type NotationStyle = 'crows-foot' | 'chen' | 'uml' | 'min-max' | 'idef1x' | 'bachman' | 'barker' | 'arrow';
+export type NotationStyle = 'crows-foot' | 'chen' | 'uml' | 'min-max' | 'idef1x' | 'bachman' | 'barker' | 'arrow' | 'merise';
 
 export interface NotationOption {
 	value: NotationStyle;
@@ -46,5 +46,10 @@ export const NOTATION_OPTIONS: NotationOption[] = [
 		value: 'arrow',
 		label: 'Arrow',
 		description: 'Simple arrow notation with text labels'
+	},
+	{
+		value: 'merise',
+		label: 'Merise',
+		description: 'French method — oval associations, (min,max) cardinalities'
 	}
 ];

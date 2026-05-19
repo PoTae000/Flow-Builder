@@ -10,6 +10,8 @@ export interface DiagramMeta {
 	diagramType?: DiagramType;
 	createdAt: number;
 	updatedAt: number;
+	pinned?: boolean;
+	tags?: string[];
 }
 
 export interface ViewBookmark {
@@ -17,6 +19,12 @@ export interface ViewBookmark {
 	panX: number;
 	panY: number;
 	zoom: number;
+}
+
+export interface CustomFont {
+	label: string;
+	value: string;
+	url: string;
 }
 
 export interface DiagramData {
@@ -34,6 +42,7 @@ export interface DiagramData {
 	dfdNodes?: DFDNode[];
 	dfdFlows?: DFDFlow[];
 	bookmarks?: ViewBookmark[];
+	customFonts?: CustomFont[];
 }
 
 export interface UserProfile {

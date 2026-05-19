@@ -4,6 +4,7 @@
 	import { collab } from '$lib/stores/collab.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { i18n } from '$lib/i18n';
+	import AutoSaveIndicator from './AutoSaveIndicator.svelte';
 
 	let {
 		onexport,
@@ -65,13 +66,13 @@
 
 	let showOverflow = $state(false);
 	let showDesktopOverflow = $state(false);
-	const layouting = $derived(diagram.animating);
 
 	async function autoLayout() {
-		if (await collab.requestPermission('auto-layout')) {
-			const timedOut = diagram.animateLayout();
-			if (timedOut) toast.warning('Layout ใช้เวลานานเกินไป ผลลัพธ์อาจไม่สมบูรณ์');
+		if (collab.connected && collab.users.length > 1) {
+			const granted = await collab.requestPermission('auto-layout');
+			if (!granted) return;
 		}
+		diagram.animateLayout(300);
 	}
 
 	const zoomPercent = $derived(Math.round(diagram.zoom * 100));
@@ -120,6 +121,11 @@
 	<button class={btnClass} onclick={() => diagram.redo()} disabled={!diagram.canRedo} title={i18n.t('toolbar.redo')} aria-label={i18n.t('toolbar.redo')}>
 		<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a5 5 0 00-5 5v2M21 10l-4-4M21 10l-4 4" /></svg>
 	</button>
+
+	<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
+
+	<!-- Auto-save indicator -->
+	<AutoSaveIndicator />
 
 	<!-- Desktop primary buttons (always visible on xl) -->
 	<div class="hidden xl:contents">
@@ -174,6 +180,16 @@
 			</button>
 		{/if}
 
+		<!-- Data Flow Toggle -->
+		<button
+			class="{btnClass} {diagram.showDataFlow ? '!bg-cyan-100 !text-cyan-600 dark:!bg-cyan-900/30 dark:!text-cyan-400' : ''}"
+			onclick={() => diagram.toggleDataFlow()}
+			title="Data Flow"
+			aria-label="Data Flow"
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
+		</button>
+
 		<!-- Grid Toggle -->
 		<button
 			class="{btnClass} {diagram.showGrid ? '!bg-blue-100 !text-blue-600 dark:!bg-blue-900/30 dark:!text-blue-400' : ''}"
@@ -182,6 +198,16 @@
 			aria-label={i18n.t('toolbar.grid')}
 		>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v16h16M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" /></svg>
+		</button>
+
+		<!-- Physics Toggle -->
+		<button
+			class="{btnClass} {diagram.physicsMode ? '!bg-green-100 !text-green-600 dark:!bg-green-900/30 dark:!text-green-400' : ''}"
+			onclick={() => diagram.togglePhysics()}
+			title="Physics Simulation"
+			aria-label="Physics Simulation"
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
 		</button>
 
 		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
@@ -267,7 +293,7 @@
 			<button
 				class={overflowBtnClass}
 				onclick={() => { showDesktopOverflow = false; autoLayout(); }}
-				disabled={(diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0) || layouting}
+				disabled={diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0}
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
 				{i18n.t('toolbar.layout')}
@@ -356,7 +382,7 @@
 			<button
 				class={overflowBtnClass}
 				onclick={() => { showOverflow = false; autoLayout(); }}
-				disabled={(diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0) || layouting}
+				disabled={diagram.entities.length === 0 && diagram.flowNodes.length === 0 && diagram.dfdNodes.length === 0}
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
 				{i18n.t('toolbar.layout')}
@@ -426,6 +452,14 @@
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; diagram.toggleGrid(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v16h16M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" /></svg>
 				{i18n.t('toolbar.grid')} {diagram.showGrid ? '(ON)' : ''}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; diagram.togglePhysics(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+				Physics {diagram.physicsMode ? '(ON)' : ''}
+			</button>
+			<button class={overflowBtnClass} onclick={() => { showOverflow = false; diagram.toggleDataFlow(); }}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
+				Data Flow {diagram.showDataFlow ? '(ON)' : ''}
 			</button>
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontemplates?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>

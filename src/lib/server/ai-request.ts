@@ -9,8 +9,8 @@ import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
 import { authenticateRequest } from '$lib/server/google-verify';
 import { checkRateLimit } from '$lib/server/rate-limit';
 
-const ANON_RATE_LIMIT = 5; // req/min
-const AUTH_RATE_LIMIT = 20; // req/min
+const ANON_RATE_LIMIT = 15; // req/min
+const AUTH_RATE_LIMIT = 40; // req/min
 const DEFAULT_TIMEOUT = 30_000; // 30s
 const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 

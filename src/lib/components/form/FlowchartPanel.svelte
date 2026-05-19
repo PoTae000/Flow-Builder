@@ -72,6 +72,70 @@
 {/snippet}
 
 <div class="flex flex-col gap-5">
+	<!-- Auto Layout -->
+	{#if diagram.flowNodes.length > 0}
+		<div class="flex flex-col gap-2">
+			<span class="text-xs font-normal text-[var(--ui-text-muted)] uppercase tracking-wider">จัดวาง Layout</span>
+
+			<div class="grid grid-cols-2 gap-2">
+				<button
+					onclick={() => diagram.applyFlowchartLayout('hierarchical-tb')}
+					class="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] transition hover:border-[var(--ui-border)] hover:bg-[var(--ui-bg-tertiary)]"
+					title="จัดวางแบบลำดับชั้น บนลงล่าง"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+					</svg>
+					บนลงล่าง
+				</button>
+
+				<button
+					onclick={() => diagram.applyFlowchartLayout('hierarchical-lr')}
+					class="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] transition hover:border-[var(--ui-border)] hover:bg-[var(--ui-bg-tertiary)]"
+					title="จัดวางแบบลำดับชั้น ซ้ายไปขวา"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+					</svg>
+					ซ้ายไปขวา
+				</button>
+
+				<button
+					onclick={() => diagram.applyFlowchartLayout('grid')}
+					class="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] transition hover:border-[var(--ui-border)] hover:bg-[var(--ui-bg-tertiary)]"
+					title="จัดวางแบบตาราง"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+					</svg>
+					ตาราง
+				</button>
+
+				<button
+					onclick={() => diagram.applyFlowchartLayout('circular')}
+					class="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] transition hover:border-[var(--ui-border)] hover:bg-[var(--ui-bg-tertiary)]"
+					title="จัดวางแบบวงกลม"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<circle cx="12" cy="12" r="9" stroke-width="2" />
+					</svg>
+					วงกลม
+				</button>
+
+				<button
+					onclick={() => diagram.applyFlowchartLayout('force')}
+					class="col-span-2 flex items-center justify-center gap-1.5 rounded-lg border border-[var(--ui-border-light)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] transition hover:border-[var(--ui-border)] hover:bg-[var(--ui-bg-tertiary)]"
+					title="จัดวางแบบแรงดึงดูด"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+					</svg>
+					Force-Directed
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Add Node -->
 	<div class="flex flex-col gap-2">
 		<span class="text-xs font-normal text-[var(--ui-text-muted)] uppercase tracking-wider">เพิ่ม Node</span>
@@ -197,5 +261,90 @@
 				{/each}
 			</div>
 		</div>
+
+		<!-- Edge Style Editor (when edge selected) -->
+		{#if diagram.selectedEdgeId}
+			{@const edge = diagram.flowEdges.find(e => e.id === diagram.selectedEdgeId)}
+			{#if edge}
+				<div class="flex flex-col gap-2 border-t border-[var(--ui-border)] pt-3">
+					<span class="text-xs font-normal text-[var(--ui-text-muted)] uppercase tracking-wider">แก้ไข Edge</span>
+
+					<!-- Label -->
+					<div class="flex flex-col gap-1">
+						<label class="text-xs text-[var(--ui-text-muted)]">Label</label>
+						<input
+							type="text"
+							value={edge.label}
+							oninput={(e) => diagram.updateFlowEdge(edge.id, { label: e.currentTarget.value })}
+							placeholder="Edge label"
+							class="w-full rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-2 py-1.5 text-sm text-[var(--ui-text)] placeholder:text-[var(--ui-text-muted)]"
+						/>
+					</div>
+
+					<!-- Line Style -->
+					<div class="flex flex-col gap-1">
+						<label class="text-xs text-[var(--ui-text-muted)]">Line Style</label>
+						<select
+							value={edge.lineStyle || 'orthogonal'}
+							onchange={(e) => diagram.updateFlowEdge(edge.id, { lineStyle: e.currentTarget.value as any })}
+							class="w-full rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-2 py-1.5 text-sm text-[var(--ui-text)]"
+						>
+							<option value="orthogonal">Orthogonal</option>
+							<option value="straight">Straight</option>
+							<option value="curved">Curved</option>
+						</select>
+					</div>
+
+					<!-- Stroke Dash -->
+					<div class="flex flex-col gap-1">
+						<label class="text-xs text-[var(--ui-text-muted)]">Stroke</label>
+						<select
+							value={edge.strokeDash || 'solid'}
+							onchange={(e) => diagram.updateFlowEdge(edge.id, { strokeDash: e.currentTarget.value as any })}
+							class="w-full rounded border border-[var(--ui-border)] bg-[var(--ui-bg)] px-2 py-1.5 text-sm text-[var(--ui-text)]"
+						>
+							<option value="solid">Solid</option>
+							<option value="dashed">Dashed</option>
+							<option value="dotted">Dotted</option>
+						</select>
+					</div>
+
+					<!-- Stroke Width -->
+					<div class="flex flex-col gap-1">
+						<label class="text-xs text-[var(--ui-text-muted)]">Width: {edge.strokeWidth || 1.5}px</label>
+						<input
+							type="range"
+							min="1"
+							max="5"
+							step="0.5"
+							value={edge.strokeWidth || 1.5}
+							oninput={(e) => diagram.updateFlowEdge(edge.id, { strokeWidth: parseFloat(e.currentTarget.value) })}
+							class="w-full"
+						/>
+					</div>
+
+					<!-- Edge Color -->
+					<div class="flex flex-col gap-1">
+						<label class="text-xs text-[var(--ui-text-muted)]">Color</label>
+						<input
+							type="color"
+							value={edge.edgeColor || '#6b7280'}
+							onchange={(e) => diagram.updateFlowEdge(edge.id, { edgeColor: e.currentTarget.value })}
+							class="w-full h-8 rounded border border-[var(--ui-border)] cursor-pointer"
+						/>
+					</div>
+
+					<!-- Reset Waypoints Button -->
+					{#if edge.waypoints && edge.waypoints.length > 0}
+						<button
+							class="w-full rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-1.5 text-sm text-[var(--ui-text)] transition hover:bg-[var(--ui-bg-tertiary)]"
+							onclick={() => diagram.updateFlowEdge(edge.id, { waypoints: undefined })}
+						>
+							Reset Path
+						</button>
+					{/if}
+				</div>
+			{/if}
+		{/if}
 	{/if}
 </div>

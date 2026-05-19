@@ -11,6 +11,7 @@
 		'change-font': 'เปลี่ยน Font',
 		'domain-starter': 'สร้าง Diagram จากโดเมน (Domain Starter)',
 		'templates': 'ใช้เทมเพลต (Templates)',
+		'physics': 'เปิด Physics Simulation',
 	};
 
 	const request = $derived(collab.permissionRequest);

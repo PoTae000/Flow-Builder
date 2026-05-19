@@ -10,7 +10,8 @@
 		onmousedown,
 		onclick,
 		ontouchstart,
-		oncontextmenu
+		oncontextmenu,
+		onStartEdit
 	}: {
 		node: FlowNode;
 		selected?: boolean;
@@ -19,12 +20,13 @@
 		onclick?: (e: MouseEvent) => void;
 		ontouchstart?: (e: TouchEvent) => void;
 		oncontextmenu?: (e: MouseEvent) => void;
+		onStartEdit?: (nodeId: string) => void;
 	} = $props();
 
 	const colors = $derived(theme.colors);
 
-	const W = 140;
-	const H = 60;
+	const W = $derived(node.width || 140);
+	const H = $derived(node.height || 60);
 	const cx = $derived(node.position.x);
 	const cy = $derived(node.position.y);
 </script>
@@ -41,6 +43,10 @@
 	{onclick}
 	{ontouchstart}
 	{oncontextmenu}
+	ondblclick={(e) => {
+		e.stopPropagation();
+		onStartEdit?.(node.id);
+	}}
 	onkeydown={(e) => { if (e.key === 'Enter' && onclick) onclick(e as unknown as MouseEvent); }}
 	style="cursor: grab;"
 >

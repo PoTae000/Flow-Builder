@@ -11,9 +11,11 @@ import type { FlowNode, FlowEdge } from '$lib/types/flowchart';
 import type { DFDNode, DFDFlow } from '$lib/types/context-diagram';
 import { safeSave } from '$lib/utils/storage';
 import { snap } from './collab-utils';
+import { toast } from './toast.svelte';
 import * as permissions from './collab-permissions.svelte';
 import * as chat from './collab-chat.svelte';
 import * as presentation from './collab-presentation.svelte';
+import { voiceChat } from './voice-chat.svelte';
 
 export interface CollabUser {
 	id: number;
@@ -25,7 +27,7 @@ export interface CollabUser {
 
 export type PermissionAction = 'import' | 'ai-analysis' | 'translate' | 'auto-layout'
 	| 'presentation' | 'change-notation' | 'change-font'
-	| 'domain-starter' | 'templates';
+	| 'domain-starter' | 'templates' | 'physics';
 
 export interface PermissionRequest {
 	id: string;
@@ -42,6 +44,12 @@ export interface ChatMessage {
 	content: string;
 	senderName?: string;
 	senderPicture?: string;
+	action?: {
+		type: 'create' | 'modify';
+		entities: any[];
+		relationships: any[];
+		appliedBy?: string;
+	};
 }
 
 const USER_COLORS = [
@@ -61,7 +69,7 @@ function generateRandomString(length: number): string {
 }
 
 function generateRoomId(): string {
-	return generateRandomString(12);
+	return generateRandomString(6);
 }
 
 function generateRoomToken(): string {
@@ -89,6 +97,8 @@ export class CollabState {
 	private _joinedAsHost = false;
 	/** The host's awareness client ID */
 	private hostClientId: number | null = null;
+	/** Storage event listener for cross-tab leave signals */
+	private storageListener: ((e: StorageEvent) => void) | null = null;
 
 	// Permission voting state
 	permissionRequest = $state<PermissionRequest | null>(null);
@@ -101,6 +111,21 @@ export class CollabState {
 
 	/** Remote cursor positions — updated separately from users for high-frequency reactivity */
 	cursorMap = $state<Map<number, { x: number; y: number; name: string; color: string }>>(new Map());
+
+	/** Remote user selections — maps clientId → { entityIds, color, name } */
+	remoteSelections = $state<Map<number, { entityIds: string[]; color: string; name: string }>>(new Map());
+
+	/** O(1) lookup: entityId → list of remote selectors */
+	get remoteSelectionsByEntity(): Map<string, Array<{ color: string; name: string }>> {
+		const result = new Map<string, Array<{ color: string; name: string }>>();
+		for (const [, sel] of this.remoteSelections) {
+			for (const entityId of sel.entityIds) {
+				if (!result.has(entityId)) result.set(entityId, []);
+				result.get(entityId)!.push({ color: sel.color, name: sel.name });
+			}
+		}
+		return result;
+	}
 
 	// Shared chat state
 	chatMessages = $state<ChatMessage[]>([]);
@@ -116,16 +141,38 @@ export class CollabState {
 	presentationPanY = $state(0);
 	presentationZoom = $state(1);
 
+	// Last save info
+	lastSaveUserName = $state<string | null>(null);
+	lastSaveUserPicture = $state<string | null>(null);
+	lastSaveTimestamp = $state<number | null>(null);
+
 	_doc: Y.Doc | null = null;
 	_provider: WebrtcProvider | null = null;
 	_undoManager: UndoManager | null = null;
 	suppressLocalPush = false;
 	private syncFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Debounce conflict toasts per entity (max 1 per 3s) */
+	private _conflictToastTimers = new Map<string, number>();
+	/** Track last applied layout timestamp to prevent duplicate triggers */
+	private _lastLayoutTs = 0;
+	/** Track last applied notation timestamp to prevent duplicate triggers */
+	private _lastNotationTs = 0;
+	/** Track last applied physics timestamp to prevent duplicate triggers */
+	private _lastPhysicsTs = 0;
+	/** Lerp targets for smooth remote physics rendering */
+	private _physicsLerpTargets = new Map<string, { x: number; y: number }>();
+	private _physicsLerpFrameId = 0;
+	/** Timer to detect empty/closed rooms for joiners */
+	private _emptyRoomTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Listener references for cleanup (prevents memory leak)
 	private _listeners: {
 		awarenessChange?: Function;
 		awarenessChangeCursors?: Function;
+		awarenessChangeLayout?: Function;
+		awarenessChangeNotation?: Function;
+		awarenessChangePhysics?: Function;
+		awarenessChangeDataFlow?: Function;
 		entitiesObserver?: Function;
 		relationshipsObserver?: Function;
 		metaObserver?: Function;
@@ -217,11 +264,17 @@ export class CollabState {
 			this.userPicture = auth.user.picture;
 		}
 
+		// Setup cross-tab leave signal listener
+		this.setupStorageListener();
+
 		this._doc = new Y.Doc();
 
 		const signalingUrl = PUBLIC_SIGNALING_URL || 'wss://signaling.yjs.dev';
-		// C1/H5: Topic includes token so only users with the share URL can join
-		const topic = `er-diagram-${roomId}-${this.roomToken}`;
+		// Topic: if no token provided, use room ID only (public room)
+		// If token provided, include it for private room
+		const topic = this.roomToken
+			? `er-diagram-${roomId}-${this.roomToken}`
+			: `er-diagram-${roomId}`;
 		this._provider = new WebrtcProvider(topic, this._doc, {
 			signaling: [signalingUrl]
 		});
@@ -237,18 +290,38 @@ export class CollabState {
 		this.localClientId = awareness.clientID;
 		this.hostClientId = asHost ? awareness.clientID : null;
 
+		const userId = auth.user?.sub || '';
+
 		awareness.setLocalStateField('user', {
 			name: this.userName || 'Anonymous',
 			color: USER_COLORS[colorIdx],
-			picture: this.userPicture || ''
+			picture: this.userPicture || '',
+			userId: userId
 		});
+
+		// Initialize voice chat
+		voiceChat.connect(this._doc, this.localClientId);
 
 		// Watch awareness changes for user list (store ref for cleanup)
 		const updateUsers = () => {
-			const states = awareness.getStates() as Map<number, { user?: { name: string; color: string; picture: string }; cursor?: { x: number; y: number } | null }>;
+			const states = awareness.getStates() as Map<number, { user?: { name: string; color: string; picture: string; userId?: string }; cursor?: { x: number; y: number } | null; selection?: string[]; lastEdit?: { entityId: string; timestamp: number } }>;
 			const list: CollabUser[] = [];
+			const seenUserIds = new Set<string>();
+			const newSelections = new Map<number, { entityIds: string[]; color: string; name: string }>();
+
 			states.forEach((state, clientId) => {
 				if (state.user) {
+					// Use userId (Google sub) if it exists and is non-empty, otherwise use anon-{clientId}
+					const userId = (state.user.userId && state.user.userId.trim().length > 0)
+						? state.user.userId.trim()
+						: `anon-${clientId}`;
+
+					// Skip if we've already seen this userId (duplicate user in multiple tabs)
+					if (seenUserIds.has(userId)) {
+						return;
+					}
+					seenUserIds.add(userId);
+
 					list.push({
 						id: clientId,
 						name: state.user.name,
@@ -256,10 +329,26 @@ export class CollabState {
 						picture: state.user.picture || '',
 						cursor: state.cursor ?? undefined
 					});
+
+					// Track remote selections (skip self)
+					if (clientId !== awareness.clientID && state.selection && state.selection.length > 0) {
+						newSelections.set(clientId, {
+							entityIds: state.selection,
+							color: state.user.color,
+							name: state.user.name
+						});
+					}
 				}
 			});
 			this.users = list;
+			this.remoteSelections = newSelections;
 			this.peerCount = list.length;
+
+			// Cancel empty-room timer once we see other peers
+			if (list.length > 1 && this._emptyRoomTimer) {
+				clearTimeout(this._emptyRoomTimer);
+				this._emptyRoomTimer = null;
+			}
 
 			// Re-check permission result when users change (disconnect = auto-approve)
 			if (this.permissionRequest && this._permissionResolver &&
@@ -296,10 +385,23 @@ export class CollabState {
 
 		// Dedicated cursor listener — updates cursorMap separately for fast reactivity
 		const updateCursors = () => {
-			const states = awareness.getStates() as Map<number, { user?: { name: string; color: string }; cursor?: { x: number; y: number } | null }>;
+			const states = awareness.getStates() as Map<number, { user?: { name: string; color: string; userId?: string }; cursor?: { x: number; y: number } | null }>;
 			const newMap = new Map<number, { x: number; y: number; name: string; color: string }>();
+			const seenUserIds = new Set<string>();
+
 			states.forEach((state, clientId) => {
 				if (clientId !== awareness.clientID && state.user && state.cursor) {
+					// Use userId (Google sub) if it exists and is non-empty, otherwise use anon-{clientId}
+					const userId = (state.user.userId && state.user.userId.trim().length > 0)
+						? state.user.userId.trim()
+						: `anon-${clientId}`;
+
+					// Skip duplicate cursors from same user in multiple tabs
+					if (seenUserIds.has(userId)) {
+						return;
+					}
+					seenUserIds.add(userId);
+
 					newMap.set(clientId, {
 						x: state.cursor.x,
 						y: state.cursor.y,
@@ -313,14 +415,183 @@ export class CollabState {
 		this._listeners.awarenessChangeCursors = updateCursors;
 		awareness.on('change', updateCursors);
 
+		// Listen for remote layout intent via awareness (instant P2P)
+		const updateLayout = () => {
+			if (diagram.animating) return;
+			const states = awareness.getStates() as Map<number, any>;
+			states.forEach((state, clientId) => {
+				if (clientId === awareness.clientID) return;
+				if (state.layoutIntent && state.layoutIntent.ts > this._lastLayoutTs) {
+					this._lastLayoutTs = state.layoutIntent.ts;
+					const targetPositions = new Map<string, { x: number; y: number }>();
+					for (const [id, pos] of Object.entries(state.layoutIntent.positions)) {
+						const p = pos as { x: number; y: number };
+						targetPositions.set(id, { x: p.x, y: p.y });
+					}
+					if (targetPositions.size > 0) {
+						diagram.applyRemoteLayout(targetPositions);
+					}
+				}
+			});
+		};
+		this._listeners.awarenessChangeLayout = updateLayout;
+		awareness.on('change', updateLayout);
+
+		// Listen for remote notation change via awareness (instant P2P)
+		const updateNotation = () => {
+			const states = awareness.getStates() as Map<number, any>;
+			states.forEach((state, clientId) => {
+				if (clientId === awareness.clientID) return;
+				if (state.notationIntent && state.notationIntent.ts > this._lastNotationTs) {
+					this._lastNotationTs = state.notationIntent.ts;
+					const notation = state.notationIntent.notation as NotationStyle;
+					if (notation && notation !== diagram.notation) {
+						diagram.setNotation(notation, true);
+					}
+				}
+			});
+		};
+		this._listeners.awarenessChangeNotation = updateNotation;
+		awareness.on('change', updateNotation);
+
+		// Listen for remote physics simulation via awareness (lerp interpolation)
+		const physicsLerp = () => {
+			if (this._physicsLerpTargets.size === 0) {
+				this._physicsLerpFrameId = 0;
+				return;
+			}
+			const LERP_FACTOR = 0.35;
+			let anyMoving = false;
+			for (const [id, target] of this._physicsLerpTargets) {
+				// Skip entities the local user is actively dragging
+				if (diagram.localDraggingIds.has(id)) continue;
+
+				let node: { position: { x: number; y: number } } | undefined;
+				if (diagram.diagramType === 'er') {
+					node = diagram.entities.find(e => e.id === id);
+				} else if (diagram.diagramType === 'flowchart') {
+					node = diagram.flowNodes.find(n => n.id === id);
+				} else if (diagram.diagramType === 'context') {
+					node = diagram.dfdNodes.find(n => n.id === id);
+				}
+				if (!node) continue;
+				const dx = target.x - node.position.x;
+				const dy = target.y - node.position.y;
+				if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+					node.position = { x: target.x, y: target.y };
+				} else {
+					node.position = {
+						x: node.position.x + dx * LERP_FACTOR,
+						y: node.position.y + dy * LERP_FACTOR
+					};
+					anyMoving = true;
+				}
+			}
+			if (anyMoving) {
+				this._physicsLerpFrameId = requestAnimationFrame(physicsLerp);
+			} else {
+				this._physicsLerpFrameId = 0;
+			}
+		};
+
+		const updatePhysics = () => {
+			const states = awareness.getStates() as Map<number, any>;
+			states.forEach((state, clientId) => {
+				if (clientId === awareness.clientID) return;
+				if (state.physicsIntent && state.physicsIntent.ts > this._lastPhysicsTs) {
+					this._lastPhysicsTs = state.physicsIntent.ts;
+					if (state.physicsIntent.active && state.physicsIntent.positions) {
+						const positions = state.physicsIntent.positions as Record<string, { x: number; y: number }>;
+						for (const [id, pos] of Object.entries(positions)) {
+							this._physicsLerpTargets.set(id, { x: pos.x, y: pos.y });
+						}
+						// Start lerp loop if not running
+						if (!this._physicsLerpFrameId) {
+							this._physicsLerpFrameId = requestAnimationFrame(physicsLerp);
+						}
+					} else if (!state.physicsIntent.active) {
+						// Physics stopped — snap to final + clear
+						this._physicsLerpTargets.clear();
+						if (this._physicsLerpFrameId) {
+							cancelAnimationFrame(this._physicsLerpFrameId);
+							this._physicsLerpFrameId = 0;
+						}
+					}
+				}
+			});
+		};
+		this._listeners.awarenessChangePhysics = updatePhysics;
+		awareness.on('change', updatePhysics);
+
+		// Listen for remote data flow toggle via awareness
+		const updateDataFlow = () => {
+			const states = awareness.getStates() as Map<number, any>;
+			let anyRemoteActive = false;
+			states.forEach((state, clientId) => {
+				if (clientId === awareness.clientID) return;
+				if (state.dataFlowActive) anyRemoteActive = true;
+			});
+			if (anyRemoteActive && !diagram.showDataFlow) {
+				diagram.showDataFlow = true;
+			} else if (!anyRemoteActive) {
+				// Check local state from awareness
+				const localState = awareness.getLocalState() as any;
+				if (!localState?.dataFlowActive && diagram.showDataFlow) {
+					diagram.showDataFlow = false;
+				}
+			}
+		};
+		this._listeners.awarenessChangeDataFlow = updateDataFlow;
+		awareness.on('change', updateDataFlow);
+
 		// Setup Y.js shared types
 		const yEntities = this._doc.getMap('entities');
 		const yRelationships = this._doc.getMap('relationships');
 		const yMeta = this._doc.getMap('meta');
 
-		// Observe remote entity changes
-		const entitiesObserver = () => {
+		// Observe remote entity changes (with conflict detection)
+		const entitiesObserver = (events: Y.YEvent<any>[]) => {
 			if (this.suppressLocalPush) return;
+
+			// Conflict detection: check if any changed entity is selected locally
+			if (diagram.selectedNodeIds.length > 0) {
+				const changedIds = new Set<string>();
+				for (const event of events) {
+					if (event.target === yEntities) {
+						// Top-level map changes (add/delete)
+						for (const key of event.changes.keys.keys()) {
+							changedIds.add(key);
+						}
+					} else if (event.path.length >= 1) {
+						// Nested changes (attribute within entity map)
+						const entityKey = event.path[0] as string;
+						if (entityKey) changedIds.add(entityKey);
+					}
+				}
+
+				for (const entityId of changedIds) {
+					if (diagram.selectedNodeIdSet.has(entityId)) {
+						// Find who edited it via awareness lastEdit
+						const now = Date.now();
+						const lastToast = this._conflictToastTimers.get(entityId) ?? 0;
+						if (now - lastToast < 3000) continue; // debounce
+						this._conflictToastTimers.set(entityId, now);
+
+						const states = awareness.getStates() as Map<number, any>;
+						let editorName = '';
+						states.forEach((state, clientId) => {
+							if (clientId !== awareness.clientID && state.lastEdit?.entityId === entityId) {
+								editorName = state.user?.name || 'Anonymous';
+							}
+						});
+						if (editorName) {
+							const entityName = diagram.entityMap.get(entityId)?.name || entityId;
+							toast.info(`${editorName} แก้ไข "${entityName}" ที่คุณกำลังเลือกอยู่`);
+						}
+					}
+				}
+			}
+
 			this.applyRemoteEntities(yEntities);
 		};
 		this._listeners.entitiesObserver = entitiesObserver;
@@ -338,12 +609,35 @@ export class CollabState {
 		const metaObserver = () => {
 			if (this.suppressLocalPush) return;
 			const notation = yMeta.get('notation') as NotationStyle | undefined;
-			if (notation && notation !== diagram.notation) {
-				diagram.notation = notation;
+			if (notation && notation !== diagram.notation && !diagram.notationTransitioning && !diagram.notationAppearing) {
+				// Only apply if not already transitioning (awareness-based intent already started it)
+				diagram.setNotation(notation, true);
 			}
 			const font = yMeta.get('diagramFont') as string | undefined;
 			if (font && font !== diagram.diagramFont) {
 				diagram.diagramFont = font;
+			}
+			// Sync custom fonts
+			const customFontsRaw = yMeta.get('customFonts') as string | undefined;
+			if (customFontsRaw) {
+				try {
+					const remoteFonts = JSON.parse(customFontsRaw);
+					if (Array.isArray(remoteFonts) && JSON.stringify(remoteFonts) !== JSON.stringify(diagram.customFonts)) {
+						diagram.customFonts = remoteFonts;
+						// Re-inject <link> tags for any new custom fonts
+						if (typeof document !== 'undefined') {
+							for (const f of remoteFonts) {
+								if (f.url && f.label && !document.querySelector(`link[data-custom-font="${f.label}"]`)) {
+									const link = document.createElement('link');
+									link.rel = 'stylesheet';
+									link.href = f.url;
+									link.dataset.customFont = f.label;
+									document.head.appendChild(link);
+								}
+							}
+						}
+					}
+				} catch { /* ignore invalid JSON */ }
 			}
 			const diagramType = yMeta.get('diagramType') as string | undefined;
 			if (diagramType && diagramType !== diagram.diagramType) {
@@ -402,6 +696,20 @@ export class CollabState {
 					diagram.panY = this.presentationPanY;
 					diagram.zoom = this.presentationZoom;
 				}
+			}
+
+			// Sync last save info
+			const lastSaveName = yMeta.get('lastSaveUserName') as string | undefined;
+			const lastSavePicture = yMeta.get('lastSaveUserPicture') as string | undefined;
+			const lastSaveTime = yMeta.get('lastSaveTimestamp') as string | undefined;
+			if (lastSaveName !== undefined) {
+				this.lastSaveUserName = lastSaveName;
+			}
+			if (lastSavePicture !== undefined) {
+				this.lastSaveUserPicture = lastSavePicture;
+			}
+			if (lastSaveTime !== undefined) {
+				this.lastSaveTimestamp = parseInt(lastSaveTime, 10);
 			}
 
 			// Check if host dismissed the room (all joiners should leave)
@@ -560,12 +868,75 @@ export class CollabState {
 
 		// Save room info for auto-rejoin on refresh
 		this.saveRoomInfo();
+
+		// For non-host joiners: detect empty/closed rooms after timeout
+		if (!asHost) {
+			this._emptyRoomTimer = setTimeout(() => {
+				this._emptyRoomTimer = null;
+				if (this.connected && this.peerCount <= 1) {
+					toast.warning('ห้องนี้ปิดแล้วหรือไม่มีผู้ใช้อยู่');
+					this.leaveRoom();
+				}
+			}, 4000);
+		}
+	}
+
+	/** Setup storage listener for cross-tab leave signals */
+	private setupStorageListener() {
+		// Remove old listener if exists
+		if (this.storageListener && typeof window !== 'undefined') {
+			window.removeEventListener('storage', this.storageListener);
+		}
+
+		// Create new listener
+		if (typeof window !== 'undefined') {
+			this.storageListener = (e: StorageEvent) => {
+				// Only handle collab-leave-signal events
+				if (e.key === 'collab-leave-signal' && e.newValue) {
+					try {
+						const signal = JSON.parse(e.newValue);
+						const myUserId = auth.user?.sub || '';
+
+						// If this leave signal is for my userId, leave the room
+						if (signal.userId && signal.userId === myUserId && myUserId !== '') {
+							// Small delay to avoid race condition with the tab that initiated the leave
+							setTimeout(() => {
+								if (this.connected) {
+									this.leaveRoom();
+								}
+							}, 100);
+						}
+					} catch {
+						// Ignore invalid JSON
+					}
+				}
+			};
+			window.addEventListener('storage', this.storageListener);
+		}
 	}
 
 	/** Leave the room. If silent=true, don't clear diagram (used internally before rejoin) */
 	leaveRoom(silent = false) {
 		const wasJoiner = this.connected && !this.isHost;
 		const wasHost = this.connected && this.isHost;
+		const wasConnectedWithOthers = this.users.length > 1;
+
+		// Broadcast leave signal to other tabs of the same user (only if not silent)
+		if (!silent && typeof localStorage !== 'undefined' && auth.user?.sub) {
+			const leaveSignal = {
+				userId: auth.user.sub,
+				timestamp: Date.now()
+			};
+			try {
+				localStorage.setItem('collab-leave-signal', JSON.stringify(leaveSignal));
+				// Clear it immediately so it doesn't interfere with future joins
+				setTimeout(() => {
+					localStorage.removeItem('collab-leave-signal');
+				}, 500);
+			} catch {
+				// Ignore localStorage errors
+			}
+		}
 
 		// Snapshot host's diagram before cleanup (safety net against Y.js destruction callbacks)
 		const hostBackup = wasHost ? {
@@ -579,7 +950,14 @@ export class CollabState {
 			flowEdges: snap(diagram.flowEdges),
 			dfdNodes: snap(diagram.dfdNodes),
 			dfdFlows: snap(diagram.dfdFlows),
+			customFonts: snap(diagram.customFonts),
 		} : null;
+
+		// Cancel empty-room timer
+		if (this._emptyRoomTimer) {
+			clearTimeout(this._emptyRoomTimer);
+			this._emptyRoomTimer = null;
+		}
 
 		// Block stray Y.js observer callbacks during cleanup
 		this.suppressLocalPush = true;
@@ -606,7 +984,14 @@ export class CollabState {
 		if (this._presViewTimer) { clearTimeout(this._presViewTimer); this._presViewTimer = null; }
 		if (this._cursorTimer) { clearTimeout(this._cursorTimer); this._cursorTimer = null; }
 		this.cursorMap = new Map();
+		this.remoteSelections = new Map();
 		this.localClientId = -1;
+		this.lastSaveUserName = null;
+		this.lastSaveUserPicture = null;
+		this.lastSaveTimestamp = null;
+
+		// Disconnect voice chat
+		voiceChat.disconnect();
 
 		// Unregister all Y.js listeners before destroying (prevents memory leak)
 		if (this._provider && this._doc) {
@@ -618,6 +1003,18 @@ export class CollabState {
 			}
 			if (this._listeners.awarenessChangeCursors) {
 				awareness.off('change', this._listeners.awarenessChangeCursors);
+			}
+			if (this._listeners.awarenessChangeLayout) {
+				awareness.off('change', this._listeners.awarenessChangeLayout);
+			}
+			if (this._listeners.awarenessChangeNotation) {
+				awareness.off('change', this._listeners.awarenessChangeNotation);
+			}
+			if (this._listeners.awarenessChangePhysics) {
+				awareness.off('change', this._listeners.awarenessChangePhysics);
+			}
+			if (this._listeners.awarenessChangeDataFlow) {
+				awareness.off('change', this._listeners.awarenessChangeDataFlow);
 			}
 
 			// Y.Map/Y.Array observers
@@ -676,8 +1073,25 @@ export class CollabState {
 		}
 		this.clearRoomInfo();
 
+		// Clear ?room= and ?token= from URL so page refresh won't auto-rejoin
+		if (!silent && typeof window !== 'undefined') {
+			const url = new URL(window.location.href);
+			if (url.searchParams.has('room') || url.searchParams.has('token')) {
+				url.searchParams.delete('room');
+				url.searchParams.delete('token');
+				window.history.replaceState({}, '', url.pathname + (url.search || ''));
+			}
+		}
+
+		// Remove storage listener
+		if (this.storageListener && typeof window !== 'undefined') {
+			window.removeEventListener('storage', this.storageListener);
+			this.storageListener = null;
+		}
+
 		// Joiner leaving: clear the diagram (it belongs to the host)
-		if (wasJoiner && !silent) {
+		// Use wasConnectedWithOthers (captured before cleanup) since this.users is already cleared
+		if (wasJoiner && !silent && wasConnectedWithOthers) {
 			diagram.entities = [];
 			diagram.relationships = [];
 			diagram.flowNodes = [];
@@ -698,6 +1112,7 @@ export class CollabState {
 			diagram.flowEdges = hostBackup.flowEdges;
 			diagram.dfdNodes = hostBackup.dfdNodes;
 			diagram.dfdFlows = hostBackup.dfdFlows;
+			diagram.customFonts = hostBackup.customFonts;
 		}
 
 		// Reset suppressLocalPush so next joinRoom's observers work correctly
@@ -798,6 +1213,12 @@ export class CollabState {
 	_presViewTimer: ReturnType<typeof setTimeout> | null = null;
 	private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
 
+	/** Broadcast local selection to awareness */
+	updateSelection(ids: string[]) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('selection', ids);
+	}
+
 	/** Send local cursor position to awareness (throttled ~150ms) */
 	updateCursor(x: number, y: number) {
 		if (!this.connected || !this._provider) return;
@@ -818,8 +1239,62 @@ export class CollabState {
 		this._provider.awareness.setLocalStateField('cursor', null);
 	}
 
+	/** Broadcast layout intent via awareness (faster than Y.Doc meta) */
+	broadcastLayout(positions: Record<string, { x: number; y: number }>) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('layoutIntent', { positions, ts: Date.now() });
+		// Clear after animation window so it doesn't re-trigger on late joiners
+		setTimeout(() => {
+			this._provider?.awareness.setLocalStateField('layoutIntent', null);
+		}, 1500);
+	}
+
+	/** Broadcast notation change intent via awareness (instant P2P) */
+	broadcastNotation(notation: string) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('notationIntent', { notation, ts: Date.now() });
+		setTimeout(() => {
+			this._provider?.awareness.setLocalStateField('notationIntent', null);
+		}, 2500);
+	}
+
+	/** Broadcast physics positions via awareness so all users see the simulation */
+	broadcastPhysicsPositions(positions: Record<string, { x: number; y: number }>) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('physicsIntent', { positions, active: true, ts: Date.now() });
+	}
+
+	/** Broadcast that physics simulation stopped */
+	broadcastPhysicsStop() {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('physicsIntent', { active: false, ts: Date.now() });
+		setTimeout(() => {
+			this._provider?.awareness.setLocalStateField('physicsIntent', null);
+		}, 500);
+	}
+
+	/** Broadcast data flow toggle via awareness */
+	broadcastDataFlow(active: boolean) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('dataFlowActive', active);
+	}
+
 	pushPresentationView(panX: number, panY: number, zoom: number) {
 		presentation.pushPresentationView(this, panX, panY, zoom);
+	}
+
+	/** Broadcast that this user saved the diagram */
+	pushSaveEvent() {
+		if (!this._doc || this.suppressLocalPush) return;
+		const yMeta = this._doc.getMap('meta');
+		this.suppressLocalPush = true;
+		try {
+			yMeta.set('lastSaveUserName', this.userName || 'Anonymous');
+			yMeta.set('lastSaveUserPicture', this.userPicture || '');
+			yMeta.set('lastSaveTimestamp', Date.now().toString());
+		} finally {
+			this.suppressLocalPush = false;
+		}
 	}
 
 	/** Is this client the presenter? */
@@ -840,6 +1315,29 @@ export class CollabState {
 
 	clearChat() {
 		chat.clearChat(this);
+	}
+
+	/** Mark a chat action as applied (update Y.Array entry) */
+	markChatActionApplied(msgIndex: number, appliedBy: string) {
+		if (!this._doc) return;
+		const yChat = this._doc.getArray('chat');
+		if (msgIndex < 0 || msgIndex >= yChat.length) return;
+		const existing = yChat.get(msgIndex) as ChatMessage;
+		if (!existing?.action) return;
+		const updated: ChatMessage = {
+			...snap(existing),
+			action: { ...snap(existing.action!), appliedBy }
+		};
+		this._suppressChatSync = true;
+		try {
+			this._doc.transact(() => {
+				yChat.delete(msgIndex, 1);
+				yChat.insert(msgIndex, [updated]);
+			});
+		} finally {
+			this._suppressChatSync = false;
+		}
+		this.chatMessages = yChat.toArray() as ChatMessage[];
 	}
 
 	restoreChat() {
@@ -992,6 +1490,34 @@ export class CollabState {
 				color: y.get('color') as string | undefined
 			});
 		});
+
+		// Detect new nodes (remote add) → trigger pop-in animation
+		const oldIds = new Set(diagram.flowNodes.map(n => n.id));
+		const newIds = nodes.filter(n => !oldIds.has(n.id)).map(n => n.id);
+		if (newIds.length > 0) {
+			diagram.newEntityIds = new Set([...diagram.newEntityIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newEntityIds = new Set(
+					[...diagram.newEntityIds].filter(id => !newIds.includes(id))
+				);
+			}, 600);
+		}
+
+		// Detect removed nodes (remote delete) → trigger dying animation
+		const remoteIds = new Set(nodes.map(n => n.id));
+		const removedNodes = diagram.flowNodes.filter(n => !remoteIds.has(n.id));
+		if (removedNodes.length > 0) {
+			const dyingEnts = removedNodes.map(n => ({
+				...n, attributes: [], isWeak: false,
+				_dyingRect: { x: n.position.x, y: n.position.y, width: 160, height: 80 }
+			}));
+			diagram.dyingEntities = [...diagram.dyingEntities, ...dyingEnts] as any;
+			const dyingIds = new Set(removedNodes.map(n => n.id));
+			setTimeout(() => {
+				diagram.dyingEntities = diagram.dyingEntities.filter(e => !dyingIds.has(e.id));
+			}, 900);
+		}
+
 		diagram.flowNodes = nodes;
 	}
 
@@ -1009,6 +1535,19 @@ export class CollabState {
 			if (condition === 'yes' || condition === 'no') edge.condition = condition;
 			edges.push(edge);
 		});
+
+		// Detect new edges (remote add) → trigger line-draw animation
+		const oldIds = new Set(diagram.flowEdges.map(e => e.id));
+		const newIds = edges.filter(e => !oldIds.has(e.id)).map(e => e.id);
+		if (newIds.length > 0) {
+			diagram.newRelationshipIds = new Set([...diagram.newRelationshipIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newRelationshipIds = new Set(
+					[...diagram.newRelationshipIds].filter(id => !newIds.includes(id))
+				);
+			}, 3500);
+		}
+
 		diagram.flowEdges = edges;
 	}
 
@@ -1092,6 +1631,34 @@ export class CollabState {
 				color: y.get('color') as string | undefined
 			});
 		});
+
+		// Detect new nodes (remote add) → trigger pop-in animation
+		const oldIds = new Set(diagram.dfdNodes.map(n => n.id));
+		const newIds = nodes.filter(n => !oldIds.has(n.id)).map(n => n.id);
+		if (newIds.length > 0) {
+			diagram.newEntityIds = new Set([...diagram.newEntityIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newEntityIds = new Set(
+					[...diagram.newEntityIds].filter(id => !newIds.includes(id))
+				);
+			}, 600);
+		}
+
+		// Detect removed nodes (remote delete) → trigger dying animation
+		const remoteIds = new Set(nodes.map(n => n.id));
+		const removedNodes = diagram.dfdNodes.filter(n => !remoteIds.has(n.id));
+		if (removedNodes.length > 0) {
+			const dyingEnts = removedNodes.map(n => ({
+				...n, attributes: [], isWeak: false,
+				_dyingRect: { x: n.position.x, y: n.position.y, width: 160, height: 80 }
+			}));
+			diagram.dyingEntities = [...diagram.dyingEntities, ...dyingEnts] as any;
+			const dyingIds = new Set(removedNodes.map(n => n.id));
+			setTimeout(() => {
+				diagram.dyingEntities = diagram.dyingEntities.filter(e => !dyingIds.has(e.id));
+			}, 900);
+		}
+
 		diagram.dfdNodes = nodes;
 	}
 
@@ -1106,6 +1673,19 @@ export class CollabState {
 				toNodeId: y.get('toNodeId') as string
 			});
 		});
+
+		// Detect new flows (remote add) → trigger line-draw animation
+		const oldIds = new Set(diagram.dfdFlows.map(f => f.id));
+		const newIds = flows.filter(f => !oldIds.has(f.id)).map(f => f.id);
+		if (newIds.length > 0) {
+			diagram.newRelationshipIds = new Set([...diagram.newRelationshipIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newRelationshipIds = new Set(
+					[...diagram.newRelationshipIds].filter(id => !newIds.includes(id))
+				);
+			}, 3500);
+		}
+
 		diagram.dfdFlows = flows;
 	}
 
@@ -1146,6 +1726,10 @@ export class CollabState {
 			});
 		} finally {
 			this.suppressLocalPush = false;
+		}
+		// Broadcast last-edit info via awareness (for conflict detection)
+		if (this._provider) {
+			this._provider.awareness.setLocalStateField('lastEdit', { entityId: e.id, timestamp: Date.now() });
 		}
 		this.scheduleSyncFallback();
 	}
@@ -1213,8 +1797,14 @@ export class CollabState {
 	pushFullState() {
 		if (!this._doc) return;
 		// Snapshot all data to strip Svelte 5 proxies
+		// Filter out dying entities/relationships (they're kept locally for animation only)
 		const entities = snap(diagram.entities);
-		const relationships = snap(diagram.relationships);
+		const dyingRelIds = diagram.dyingRelationshipIds;
+		const relationships = snap(
+			dyingRelIds.size > 0
+				? diagram.relationships.filter(r => !dyingRelIds.has(r.id))
+				: diagram.relationships
+		);
 		const notes = snap(diagram.notes);
 		const flowNodes = snap(diagram.flowNodes);
 		const flowEdges = snap(diagram.flowEdges);
@@ -1334,6 +1924,9 @@ export class CollabState {
 				yMeta.set('notation', notation);
 				yMeta.set('diagramFont', font);
 				yMeta.set('diagramType', diagram.diagramType);
+				if (diagram.customFonts.length > 0) {
+					yMeta.set('customFonts', JSON.stringify(snap(diagram.customFonts)));
+				}
 				// Sync diagram tab name
 				if (_session?.activeDiagramId) {
 					const activeDiagram = (_session as any).diagrams?.find?.((d: any) => d.id === _session!.activeDiagramId);
@@ -1350,6 +1943,47 @@ export class CollabState {
 	// --- Apply remote changes (Y.Doc → diagram) ---
 
 	private applyRemoteEntities(yEntities: Y.Map<unknown>) {
+		// Skip position-only updates while animating (animation will reach correct positions)
+		if (diagram.animating) {
+			// Still apply non-position changes (name, attributes, new/removed entities)
+			const remoteIds = new Set<string>();
+			const newEntities: Entity[] = [];
+			yEntities.forEach((value) => {
+				const yEntity = value as Y.Map<unknown>;
+				const id = yEntity.get('id') as string;
+				remoteIds.add(id);
+				if (!diagram.entities.find(e => e.id === id)) {
+					const attrs: Attribute[] = JSON.parse((yEntity.get('attributes') as string) || '[]');
+					const isLocked = yEntity.get('isLocked') as boolean | undefined;
+					newEntities.push({
+						id,
+						name: yEntity.get('name') as string,
+						isWeak: yEntity.get('isWeak') as boolean,
+						position: { x: yEntity.get('positionX') as number, y: yEntity.get('positionY') as number },
+						attributes: attrs,
+						...(isLocked ? { isLocked } : {})
+					});
+				}
+			});
+			// Add any genuinely new entities
+			if (newEntities.length > 0) {
+				diagram.entities = [...diagram.entities, ...newEntities];
+				diagram.newEntityIds = new Set([...diagram.newEntityIds, ...newEntities.map(e => e.id)]);
+				setTimeout(() => {
+					diagram.newEntityIds = new Set(
+						[...diagram.newEntityIds].filter(id => !newEntities.some(e => e.id === id))
+					);
+				}, 600);
+			}
+			// Remove deleted entities (with dying animation)
+			const removed = diagram.entities.filter(e => !remoteIds.has(e.id));
+			if (removed.length > 0) {
+				this.triggerDyingEntities(removed);
+				diagram.entities = diagram.entities.filter(e => remoteIds.has(e.id));
+			}
+			return;
+		}
+
 		const entities: Entity[] = [];
 		yEntities.forEach((value) => {
 			const yEntity = value as Y.Map<unknown>;
@@ -1367,7 +2001,40 @@ export class CollabState {
 				...(isLocked ? { isLocked } : {})
 			});
 		});
+
+		// Detect new entities (remote add) → trigger pop-in animation
+		const oldIds = new Set(diagram.entities.map(e => e.id));
+		const newIds = entities.filter(e => !oldIds.has(e.id)).map(e => e.id);
+		if (newIds.length > 0) {
+			diagram.newEntityIds = new Set([...diagram.newEntityIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newEntityIds = new Set(
+					[...diagram.newEntityIds].filter(id => !newIds.includes(id))
+				);
+			}, 600);
+		}
+
+		// Detect removed entities (remote delete) → trigger dying animation
+		const remoteIds = new Set(entities.map(e => e.id));
+		const removedEnts = diagram.entities.filter(e => !remoteIds.has(e.id));
+		if (removedEnts.length > 0) {
+			this.triggerDyingEntities(removedEnts);
+		}
+
 		diagram.entities = entities;
+	}
+
+	/** Trigger dying (fade-out) animation for removed entities */
+	private triggerDyingEntities(removed: Entity[]) {
+		const dyingEnts = removed.map(e => {
+			const box = diagram.estimateEntityBox(e);
+			return { ...e, _dyingRect: { x: e.position.x, y: e.position.y, width: box.w, height: box.h } };
+		});
+		diagram.dyingEntities = [...diagram.dyingEntities, ...dyingEnts];
+		const dyingIds = new Set(removed.map(e => e.id));
+		setTimeout(() => {
+			diagram.dyingEntities = diagram.dyingEntities.filter(e => !dyingIds.has(e.id));
+		}, 900);
 	}
 
 	private applyRemoteRelationships(yRelationships: Y.Map<unknown>) {
@@ -1382,7 +2049,53 @@ export class CollabState {
 				isIdentifying: yRel.get('isIdentifying') as boolean
 			});
 		});
-		diagram.relationships = relationships;
+
+		// Detect new relationships (remote add) → trigger line-draw animation
+		const oldIds = new Set(diagram.relationships.map(r => r.id));
+		const newIds = relationships.filter(r => !oldIds.has(r.id)).map(r => r.id);
+		if (newIds.length > 0) {
+			diagram.newRelationshipIds = new Set([...diagram.newRelationshipIds, ...newIds]);
+			setTimeout(() => {
+				diagram.newRelationshipIds = new Set(
+					[...diagram.newRelationshipIds].filter(id => !newIds.includes(id))
+				);
+			}, 3500);
+		}
+
+		// Detect removed relationships (remote delete) → trigger fade-out animation
+		const remoteIds = new Set(relationships.map(r => r.id));
+		// Skip already-dying relationships (prevent double-animation)
+		const removedRels = diagram.relationships.filter(r =>
+			!remoteIds.has(r.id) && !diagram.dyingRelationshipIds.has(r.id)
+		);
+		if (removedRels.length > 0) {
+			// Only animate dying for relationships whose entities still exist
+			// (if entity was deleted, just remove instantly — no ghost lines)
+			const entityIds = new Set(diagram.entities.map(e => e.id));
+			const canAnimate = removedRels.filter(r =>
+				entityIds.has(r.entityIds[0]) && entityIds.has(r.entityIds[1])
+			);
+			const instantRemove = removedRels.filter(r =>
+				!entityIds.has(r.entityIds[0]) || !entityIds.has(r.entityIds[1])
+			);
+
+			if (canAnimate.length > 0) {
+				const removedIds = canAnimate.map(r => r.id);
+				diagram.dyingRelationshipIds = new Set([...diagram.dyingRelationshipIds, ...removedIds]);
+				// Keep animated relationships visible during undraw animation
+				diagram.relationships = [...relationships, ...canAnimate];
+				setTimeout(() => {
+					diagram.relationships = diagram.relationships.filter(r => !removedIds.includes(r.id));
+					diagram.dyingRelationshipIds = new Set(
+						[...diagram.dyingRelationshipIds].filter(id => !removedIds.includes(id))
+					);
+				}, 2500);
+			} else {
+				diagram.relationships = relationships;
+			}
+		} else {
+			diagram.relationships = relationships;
+		}
 	}
 
 	get shareUrl(): string {
@@ -1400,3 +2113,7 @@ export const collab = new CollabState();
 
 // Register with diagram store to break circular dependency
 registerCollab(collab);
+
+// Register with auto-save store for save event broadcasting
+import { registerCollab as registerAutoSaveCollab } from './auto-save.svelte';
+registerAutoSaveCollab(collab);

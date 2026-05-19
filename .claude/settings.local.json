@@ -62,7 +62,26 @@
       "Bash(git stash:*)",
       "Bash(awk:*)",
       "Bash(tr:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(bun x wrangler pages deploy:*)",
+      "Bash(bun x wrangler:*)",
+      "Bash(wrangler pages deploy:*)",
+      "Bash(bunx wrangler pages deploy:*)",
+      "Bash(bunx wrangler pages project:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && head -30 \"\"{}\"\"')",
+      "WebFetch(domain:mydbanotebook.org)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.solidpepper.com)",
+      "WebFetch(domain:web.maths.unsw.edu.au)",
+      "WebFetch(domain:pages.lip6.fr)",
+      "WebFetch(domain:itselisecatherine.blogspot.com)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:memento-dev.fr)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.achrafsoltani.com)",
+      "WebFetch(domain:louisvandevelde.be)",
+      "WebFetch(domain:2igc.cours.free.fr)",
+      "WebFetch(domain:sqlpro.developpez.com)"
     ]
   }
 }

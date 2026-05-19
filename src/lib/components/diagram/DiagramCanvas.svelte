@@ -16,15 +16,73 @@
 	import FlowNodeShape from './FlowNodeShape.svelte';
 	import FlowConnectionHandles from './FlowConnectionHandles.svelte';
 	import FlowEdgeLine from './FlowEdgeLine.svelte';
+	import InlineTextEditor from './InlineTextEditor.svelte';
+	import ResizeHandles from './ResizeHandles.svelte';
+	import WaypointHandles from './WaypointHandles.svelte';
 	import DFDNodeShape from './DFDNodeShape.svelte';
 	import DFDFlowLine from './DFDFlowLine.svelte';
 	import RemoteCursor from './RemoteCursor.svelte';
+	import DataFlowParticles from './DataFlowParticles.svelte';
+	import type { PathData } from './DataFlowParticles.svelte';
 	import ContextMenu from '../ui/ContextMenu.svelte';
 	import { i18n } from '$lib/i18n';
+	import { createOrthogonalPath } from '$lib/renderers/shared/svg-utils';
+	import type { CardinalityType } from '$lib/types/er';
 	import type { FlowEdge } from '$lib/types/flowchart';
 	import type { DFDFlow } from '$lib/types/context-diagram';
 
 	let svgEl: SVGSVGElement | undefined = $state();
+
+	// ─── Ripple Effect ───
+	let ripples = $state<Array<{ id: number; x: number; y: number }>>([]);
+	let rippleId = 0;
+
+	function addRipple(x: number, y: number) {
+		if (ripples.length >= 5) ripples = ripples.slice(1);
+		ripples = [...ripples, { id: ++rippleId, x, y }];
+	}
+	function removeRipple(id: number) {
+		ripples = ripples.filter(r => r.id !== id);
+	}
+
+	// Watch for new entities/nodes to trigger ripple at their position
+	let prevEntityCount = $state(0);
+	$effect(() => {
+		const currentCount = diagram.diagramType === 'er'
+			? diagram.entities.length
+			: diagram.diagramType === 'flowchart'
+				? diagram.flowNodes.length
+				: diagram.dfdNodes.length;
+
+		if (currentCount > prevEntityCount && prevEntityCount > 0) {
+			// A new entity was added — find the newest and ripple at its position
+			let pos: { x: number; y: number } | null = null;
+			if (diagram.diagramType === 'er' && diagram.entities.length > 0) {
+				pos = diagram.entities[diagram.entities.length - 1].position;
+			} else if (diagram.diagramType === 'flowchart' && diagram.flowNodes.length > 0) {
+				pos = diagram.flowNodes[diagram.flowNodes.length - 1].position;
+			} else if (diagram.diagramType === 'context' && diagram.dfdNodes.length > 0) {
+				pos = diagram.dfdNodes[diagram.dfdNodes.length - 1].position;
+			}
+			if (pos) addRipple(pos.x, pos.y);
+		}
+		prevEntityCount = currentCount;
+	});
+
+	// Sync physics bodies when entities/relationships change
+	$effect(() => {
+		// Touch reactive arrays to establish dependency
+		void diagram.entities.length;
+		void diagram.relationships.length;
+		void diagram.flowNodes.length;
+		void diagram.flowEdges.length;
+		void diagram.dfdNodes.length;
+		void diagram.dfdFlows.length;
+
+		if (diagram.physicsMode) {
+			diagram.physicsSyncBodies();
+		}
+	});
 
 	// Calculate edge offsets to prevent overlapping (for Flowchart)
 	const flowEdgeOffsets = $derived.by(() => {
@@ -167,6 +225,40 @@
 	// Context menu state
 	let contextMenu = $state<{ x: number; y: number } | null>(null);
 
+	// Inline editing state
+	let editingLabel = $state<{
+		nodeId?: string;
+		edgeId?: string;
+		text: string;
+		rect: DOMRect;
+	} | null>(null);
+
+	// Resize state
+	let resizing = $state<{
+		nodeId: string;
+		handle: 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w';
+		startX: number;
+		startY: number;
+		startWidth: number;
+		startHeight: number;
+		startPosX: number;
+		startPosY: number;
+	} | null>(null);
+
+	// Waypoint dragging state
+	let draggingWaypoint = $state<{
+		edgeId: string;
+		waypointIndex: number;
+		startX: number;
+		startY: number;
+	} | null>(null);
+
+	// Alignment guides
+	let alignmentGuides = $state<{
+		vertical: number[];
+		horizontal: number[];
+	}>({ vertical: [], horizontal: [] });
+
 	// Long-press timer for mobile context menu
 	let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 	let longPressStartPos: { x: number; y: number } | null = null;
@@ -216,6 +308,25 @@
 	}
 
 	function getContextMenuItems() {
+		// Edge-only context menu (relationship / flow edge / DFD flow)
+		if (diagram.selectedEdgeId && diagram.selectedNodeIds.length === 0) {
+			const edgeId = diagram.selectedEdgeId;
+			return [{
+				label: 'ลบ',
+				danger: true,
+				action: () => {
+					if (diagram.diagramType === 'er') {
+						diagram.removeRelationship(edgeId);
+					} else if (diagram.diagramType === 'flowchart') {
+						diagram.removeFlowEdge(edgeId);
+					} else if (diagram.diagramType === 'context') {
+						diagram.removeDFDFlow(edgeId);
+					}
+					closeContextMenu();
+				}
+			}];
+		}
+
 		const items: { label: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
 			{ label: 'คัดลอก', action: () => { diagram.copySelected(); closeContextMenu(); } },
 			{ label: 'วาง', action: () => { diagram.paste(); closeContextMenu(); } },
@@ -384,6 +495,183 @@
 		return sides;
 	});
 
+	// ─── Particle paths for DataFlowParticles (all diagram types) ───
+
+	function isMany(c: CardinalityType): boolean {
+		return c === 'N' || c === 'M' || c === '0..N' || c === '1..N';
+	}
+
+	const erParticlePaths = $derived.by((): PathData[] => {
+		if (diagram.diagramType !== 'er') return [];
+		return visibleRelData.map(data => {
+			const [cFrom, cTo] = data.relationship.cardinalities;
+			const fromMany = isMany(cFrom);
+			const toMany = isMany(cTo);
+
+			let particleCount: number;
+			let bidirectional = false;
+			let pathStr: string;
+
+			if (!fromMany && !toMany) {
+				// 1:1
+				particleCount = 1;
+				pathStr = createOrthogonalPath(data.fromPoint, data.toPoint);
+			} else if (!fromMany && toMany) {
+				// 1:N — flow toward many
+				particleCount = 2;
+				pathStr = createOrthogonalPath(data.fromPoint, data.toPoint);
+			} else if (fromMany && !toMany) {
+				// N:1 — reverse direction so flow toward many
+				particleCount = 2;
+				pathStr = createOrthogonalPath(data.toPoint, data.fromPoint);
+			} else {
+				// N:M — bidirectional
+				particleCount = 2;
+				bidirectional = true;
+				pathStr = createOrthogonalPath(data.fromPoint, data.toPoint);
+			}
+
+			return {
+				id: data.relationship.id,
+				d: pathStr,
+				particleCount,
+				bidirectional
+			};
+		});
+	});
+
+	function getFlowPort(node: { position: { x: number; y: number }; type: string; width?: number; height?: number }, side: 'top' | 'bottom' | 'left' | 'right') {
+		const { x: cx, y: cy } = node.position;
+		const W = node.width || 140;
+		const H = node.height || 60;
+
+		if (node.type === 'decision') {
+			const hw = W / 2 + 10, hh = H / 2 + 5;
+			if (side === 'top') return { x: cx, y: cy - hh };
+			if (side === 'bottom') return { x: cx, y: cy + hh };
+			if (side === 'left') return { x: cx - hw, y: cy };
+			return { x: cx + hw, y: cy };
+		}
+		if (node.type === 'connector') {
+			const r = 25;
+			if (side === 'top') return { x: cx, y: cy - r };
+			if (side === 'bottom') return { x: cx, y: cy + r };
+			if (side === 'left') return { x: cx - r, y: cy };
+			return { x: cx + r, y: cy };
+		}
+		const hw = W / 2, hh = H / 2;
+		if (side === 'top') return { x: cx, y: cy - hh };
+		if (side === 'bottom') return { x: cx, y: cy + hh };
+		if (side === 'left') return { x: cx - hw, y: cy };
+		return { x: cx + hw, y: cy };
+	}
+
+	const flowParticlePaths = $derived.by((): PathData[] => {
+		if (diagram.diagramType !== 'flowchart') return [];
+		return diagram.flowEdges.map(edge => {
+			const fromNode = diagram.flowNodes.find(n => n.id === edge.fromNodeId);
+			const toNode = diagram.flowNodes.find(n => n.id === edge.toNodeId);
+			if (!fromNode || !toNode) return null;
+
+			const offset = flowEdgeOffsets.get(edge.id) ?? 0;
+			const lineStyle = edge.lineStyle || 'orthogonal';
+
+			// Compute route (same logic as FlowEdgeLine)
+			let route: { x: number; y: number }[];
+
+			if (edge.waypoints && edge.waypoints.length > 0) {
+				const dx = toNode.position.x - fromNode.position.x;
+				const dy = toNode.position.y - fromNode.position.y;
+				let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+				let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
+				if (fromNode.type === 'decision') {
+					fromSide = Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
+				} else {
+					fromSide = dy >= 0 ? 'bottom' : 'top';
+				}
+				toSide = toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
+				const fp = getFlowPort(fromNode, fromSide);
+				const tp = getFlowPort(toNode, toSide);
+				route = [fp, ...edge.waypoints, tp];
+			} else {
+				const dx = toNode.position.x - fromNode.position.x;
+				const dy = toNode.position.y - fromNode.position.y;
+				let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+				let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
+				if (fromNode.type === 'decision') {
+					fromSide = Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
+				} else {
+					fromSide = dy >= 0 ? 'bottom' : 'top';
+				}
+				toSide = toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
+				const fp = getFlowPort(fromNode, fromSide);
+				const tp = getFlowPort(toNode, toSide);
+				const midY = (fp.y + tp.y) / 2 + offset;
+				route = [fp, { x: fp.x, y: midY }, { x: tp.x, y: midY }, tp];
+			}
+
+			// Build path string per lineStyle
+			let d: string;
+			if (lineStyle === 'straight') {
+				d = `M${route[0].x},${route[0].y} L${route[route.length - 1].x},${route[route.length - 1].y}`;
+			} else if (lineStyle === 'curved') {
+				if (route.length === 2) {
+					d = `M${route[0].x},${route[0].y} L${route[1].x},${route[1].y}`;
+				} else {
+					d = `M${route[0].x},${route[0].y}`;
+					for (let i = 0; i < route.length - 1; i++) {
+						const p1 = route[i];
+						const p2 = route[i + 1];
+						if (i === 0) {
+							const cp1x = p1.x + (p2.x - p1.x) * 0.5;
+							const cp1y = p1.y;
+							const cp2x = p2.x;
+							const cp2y = p1.y + (p2.y - p1.y) * 0.5;
+							d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+						} else {
+							const cp1x = p1.x;
+							const cp1y = p1.y + (p2.y - p1.y) * 0.5;
+							const cp2x = p2.x;
+							const cp2y = p1.y + (p2.y - p1.y) * 0.5;
+							d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+						}
+					}
+				}
+			} else {
+				d = route.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+			}
+
+			return { id: edge.id, d, particleCount: 1, bidirectional: false };
+		}).filter((p): p is PathData => p !== null);
+	});
+
+	const dfdParticlePaths = $derived.by((): PathData[] => {
+		if (diagram.diagramType !== 'context') return [];
+		return diagram.dfdFlows.map(flow => {
+			const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
+			const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
+			if (!fromNode || !toNode) return null;
+
+			const offset = dfdFlowOffsets.get(flow.id) ?? 0;
+			let x1 = fromNode.position.x, y1 = fromNode.position.y;
+			let x2 = toNode.position.x, y2 = toNode.position.y;
+
+			if (offset !== 0) {
+				const dx = x2 - x1, dy = y2 - y1;
+				const length = Math.sqrt(dx * dx + dy * dy);
+				if (length > 0) {
+					const perpX = -dy / length, perpY = dx / length;
+					x1 += perpX * offset; y1 += perpY * offset;
+					x2 += perpX * offset; y2 += perpY * offset;
+				}
+			}
+
+			return { id: flow.id, d: `M${x1},${y1} L${x2},${y2}`, particleCount: 1, bidirectional: false };
+		}).filter((p): p is PathData => p !== null);
+	});
+
+	const allParticlePaths = $derived([...erParticlePaths, ...flowParticlePaths, ...dfdParticlePaths]);
+
 	// Remote cursors — uses dedicated cursorMap for reliable reactivity
 	const remoteCursors = $derived(
 		collab.connected ? [...collab.cursorMap.entries()] : []
@@ -477,8 +765,17 @@
 				}
 			}
 			if (offsets.size > 0) {
-				diagram.pushHistory();
+				if (!diagram.physicsMode) diagram.pushHistory();
+				if (offsets.size > 1) diagram.startMultiDrag();
 				dragging = { offsets, startX: svgPos.x, startY: svgPos.y };
+				// Mark as locally dragging (skip remote physics lerp)
+				diagram.localDraggingIds = new Set(offsets.keys());
+				// Physics: pin dragged entities
+				if (diagram.physicsMode) {
+					for (const id of offsets.keys()) {
+						diagram.physicsPin(id);
+					}
+				}
 			}
 		}
 	}
@@ -539,6 +836,7 @@
 		}
 		if (offsets.size > 0) {
 			diagram.pushHistory();
+			diagram.localDraggingIds = new Set(offsets.keys());
 			touchState = { type: 'drag', entityId, offsets };
 		}
 
@@ -552,7 +850,28 @@
 			}
 			contextMenu = { x: touch.clientX, y: touch.clientY };
 			// Cancel drag so the node doesn't keep moving
+			diagram.localDraggingIds = new Set();
 			touchState = null;
+			longPressTimer = null;
+			longPressStartPos = null;
+		}, LONG_PRESS_MS);
+	}
+
+	function handleRelTouchStart(relId: string, e: TouchEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		if (e.touches.length !== 1) return;
+		e.stopPropagation();
+
+		diagram.selectRelationship(relId);
+
+		const touch = e.touches[0];
+		longPressStartPos = { x: touch.clientX, y: touch.clientY };
+		clearLongPressTimer();
+		longPressTimer = setTimeout(() => {
+			if (typeof navigator !== 'undefined' && navigator.vibrate) {
+				navigator.vibrate(50);
+			}
+			contextMenu = { x: touch.clientX, y: touch.clientY };
 			longPressTimer = null;
 			longPressStartPos = null;
 		}, LONG_PRESS_MS);
@@ -625,6 +944,200 @@
 		editingEntityName = '';
 	}
 
+	// Inline text editing for flow nodes
+	function startEditingFlowNode(nodeId: string) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const node = diagram.flowNodes.find(n => n.id === nodeId);
+		if (!node || !svgEl) return;
+
+		// Calculate screen position of text
+		const svgRect = svgEl.getBoundingClientRect();
+		const W = node.width || 140;
+		const H = node.height || 60;
+
+		editingLabel = {
+			nodeId,
+			text: node.name,
+			rect: new DOMRect(
+				svgRect.left + (node.position.x - diagram.panX) * diagram.zoom - (W / 2) * diagram.zoom,
+				svgRect.top + (node.position.y - diagram.panY) * diagram.zoom - 10,
+				W * diagram.zoom,
+				20
+			)
+		};
+	}
+
+	function saveInlineEdit(newText: string) {
+		if (!editingLabel) return;
+		const text = newText.trim();
+		if (text === '') {
+			editingLabel = null;
+			return;
+		}
+
+		if (editingLabel.nodeId) {
+			diagram.updateFlowNode(editingLabel.nodeId, { name: text });
+		} else if (editingLabel.edgeId) {
+			diagram.updateFlowEdge(editingLabel.edgeId, { label: text });
+		}
+		editingLabel = null;
+	}
+
+	function cancelInlineEdit() {
+		editingLabel = null;
+	}
+
+	// Resize handlers
+	function getSVGPoint(e: MouseEvent) {
+		if (!svgEl) return { x: 0, y: 0 };
+		const rect = svgEl.getBoundingClientRect();
+		return {
+			x: (e.clientX - rect.left) / diagram.zoom + diagram.panX,
+			y: (e.clientY - rect.top) / diagram.zoom + diagram.panY
+		};
+	}
+
+	function handleResizeStart(nodeId: string, handle: string, e: MouseEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const node = diagram.flowNodes.find(n => n.id === nodeId);
+		if (!node) return;
+
+		const svgPos = getSVGPoint(e);
+		resizing = {
+			nodeId,
+			handle: handle as 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w',
+			startX: svgPos.x,
+			startY: svgPos.y,
+			startWidth: node.width || 140,
+			startHeight: node.height || 60,
+			startPosX: node.position.x,
+			startPosY: node.position.y
+		};
+	}
+
+	function handleResizeMove(e: MouseEvent) {
+		if (!resizing) return;
+
+		const node = diagram.flowNodes.find(n => n.id === resizing.nodeId);
+		if (!node) return;
+
+		const svgPos = getSVGPoint(e);
+		const dx = svgPos.x - resizing.startX;
+		const dy = svgPos.y - resizing.startY;
+
+		let newWidth = resizing.startWidth;
+		let newHeight = resizing.startHeight;
+		let newX = resizing.startPosX;
+		let newY = resizing.startPosY;
+
+		// Apply resize based on handle
+		if (resizing.handle.includes('e')) {
+			newWidth = resizing.startWidth + dx;
+		}
+		if (resizing.handle.includes('w')) {
+			newWidth = resizing.startWidth - dx;
+			newX = resizing.startPosX + dx / 2;
+		}
+		if (resizing.handle.includes('s')) {
+			newHeight = resizing.startHeight + dy;
+		}
+		if (resizing.handle.includes('n')) {
+			newHeight = resizing.startHeight - dy;
+			newY = resizing.startPosY + dy / 2;
+		}
+
+		// Enforce minimum size
+		newWidth = Math.max(60, newWidth);
+		newHeight = Math.max(40, newHeight);
+
+		// Apply snap-to-grid
+		if (diagram.showGrid) {
+			newWidth = Math.round(newWidth / 20) * 20;
+			newHeight = Math.round(newHeight / 20) * 20;
+		}
+
+		diagram.updateFlowNode(resizing.nodeId, {
+			width: newWidth,
+			height: newHeight
+		});
+		diagram.moveFlowNode(resizing.nodeId, { x: newX, y: newY });
+	}
+
+	function handleResizeEnd() {
+		if (resizing) {
+			diagram.pushHistory('Resize node');
+			resizing = null;
+		}
+	}
+
+	// Waypoint handlers
+	function handleWaypointDragStart(edgeId: string, index: number, e: MouseEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const svgPos = getSVGPoint(e);
+		draggingWaypoint = {
+			edgeId,
+			waypointIndex: index,
+			startX: svgPos.x,
+			startY: svgPos.y
+		};
+	}
+
+	function handleWaypointDrag(e: MouseEvent) {
+		if (!draggingWaypoint) return;
+
+		const edge = diagram.flowEdges.find(e => e.id === draggingWaypoint!.edgeId);
+		if (!edge) return;
+
+		const svgPos = getSVGPoint(e);
+		const waypoints = [...(edge.waypoints || [])];
+
+		// Compute the route to find the actual waypoint index
+		// Waypoints are indexed starting from 1 (after fromPort)
+		const waypointArrayIndex = draggingWaypoint.waypointIndex - 1;
+
+		if (waypointArrayIndex >= 0 && waypointArrayIndex < waypoints.length) {
+			waypoints[waypointArrayIndex] = {
+				x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
+				y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
+			};
+
+			diagram.updateFlowEdge(edge.id, { waypoints });
+		}
+	}
+
+	function addWaypoint(edgeId: string, insertIndex: number) {
+		const edge = diagram.flowEdges.find(e => e.id === edgeId);
+		if (!edge) return;
+
+		// Get current route to determine the position for the new waypoint
+		const fromNode = diagram.flowNodes.find(n => n.id === edge.fromNodeId);
+		const toNode = diagram.flowNodes.find(n => n.id === edge.toNodeId);
+		if (!fromNode || !toNode) return;
+
+		// Build the route (this is a simplified version - in production you'd compute the full route)
+		const waypoints = [...(edge.waypoints || [])];
+
+		// Insert a midpoint between the segment at insertIndex
+		// For now, we'll add at the position indicated
+		const newPoint = { x: (fromNode.position.x + toNode.position.x) / 2, y: (fromNode.position.y + toNode.position.y) / 2 };
+
+		waypoints.splice(Math.max(0, insertIndex - 1), 0, newPoint);
+
+		diagram.updateFlowEdge(edge.id, { waypoints });
+		diagram.pushHistory('Add waypoint');
+	}
+
+	function removeWaypoint(edgeId: string, index: number) {
+		const edge = diagram.flowEdges.find(e => e.id === edgeId);
+		if (!edge || !edge.waypoints) return;
+
+		const waypointArrayIndex = index - 1;
+		const waypoints = edge.waypoints.filter((_, i) => i !== waypointArrayIndex);
+
+		diagram.updateFlowEdge(edge.id, { waypoints: waypoints.length > 0 ? waypoints : undefined });
+		diagram.pushHistory('Remove waypoint');
+	}
+
 	function handleCanvasMouseDown(e: MouseEvent) {
 		closeContextMenu();
 		if (presentation.active) return; // Block all canvas interaction during presentation
@@ -647,6 +1160,10 @@
 			if (target.closest('.relationship-edge') || target.closest('.chen-diamond') || target.closest('.flow-edge') || target.closest('.dfd-flow')) return;
 
 			diagram.clearSelection();
+			// Trigger ripple at click position
+			const ripplePos = screenToSvg(e.clientX, e.clientY);
+			addRipple(ripplePos.x, ripplePos.y);
+
 			panning = {
 				startX: e.clientX,
 				startY: e.clientY,
@@ -691,6 +1208,7 @@
 				const SNAP_THRESHOLD = 5;
 				let snapDx = 0;
 				let snapDy = 0;
+				alignmentGuides = { vertical: [], horizontal: [] };
 
 				if (dragging.offsets.size === 1 && diagram.diagramType === 'er') {
 					const [dragId] = dragging.offsets.keys();
@@ -711,6 +1229,7 @@
 							for (const [dv, ov] of [[dEdges.l, oEdges.l], [dEdges.r, oEdges.r], [dEdges.cx, oEdges.cx], [dEdges.l, oEdges.r], [dEdges.r, oEdges.l]]) {
 								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
 									snapDx = ov - dv;
+									alignmentGuides.vertical.push(ov);
 								}
 							}
 
@@ -718,17 +1237,46 @@
 							for (const [dv, ov] of [[dEdges.t, oEdges.t], [dEdges.b, oEdges.b], [dEdges.cy, oEdges.cy], [dEdges.t, oEdges.b], [dEdges.b, oEdges.t]]) {
 								if (Math.abs(dv - ov) <= SNAP_THRESHOLD) {
 									snapDy = ov - dv;
+									alignmentGuides.horizontal.push(ov);
 								}
+							}
+						}
+					}
+				} else if (dragging.offsets.size === 1 && diagram.diagramType === 'flowchart') {
+					const [dragId] = dragging.offsets.keys();
+					const off = dragging.offsets.get(dragId)!;
+					const draggedNode = diagram.flowNodes.find(n => n.id === dragId);
+					if (draggedNode) {
+						const newX = svgPos.x - off.dx;
+						const newY = svgPos.y - off.dy;
+
+						// Check alignment with other nodes
+						for (const node of diagram.flowNodes) {
+							if (node.id === dragId) continue;
+
+							// Vertical (x-axis) alignment
+							if (Math.abs(newX - node.position.x) <= SNAP_THRESHOLD) {
+								snapDx = node.position.x - newX;
+								alignmentGuides.vertical.push(node.position.x);
+							}
+
+							// Horizontal (y-axis) alignment
+							if (Math.abs(newY - node.position.y) <= SNAP_THRESHOLD) {
+								snapDy = node.position.y - newY;
+								alignmentGuides.horizontal.push(node.position.y);
 							}
 						}
 					}
 				}
 
 				for (const [id, off] of dragging.offsets) {
-					moveNode(id, {
-						x: svgPos.x - off.dx + snapDx,
-						y: svgPos.y - off.dy + snapDy
-					});
+					const newX = svgPos.x - off.dx + snapDx;
+					const newY = svgPos.y - off.dy + snapDy;
+					if (diagram.physicsMode) {
+						diagram.physicsMoveBody(id, newX, newY);
+					} else {
+						moveNode(id, { x: newX, y: newY });
+					}
 				}
 			} else if (draggingConnection) {
 				const svgPos = screenToSvg(e.clientX, e.clientY);
@@ -762,6 +1310,10 @@
 			} else if (selecting) {
 				const svgPos = screenToSvg(e.clientX, e.clientY);
 				selectCurrent = { x: svgPos.x, y: svgPos.y };
+			} else if (resizing) {
+				handleResizeMove(e);
+			} else if (draggingWaypoint) {
+				handleWaypointDrag(e);
 			}
 		});
 	}
@@ -794,11 +1346,30 @@
 			if (draggingConnection && hoveredNodeId && diagram.diagramType === 'flowchart') {
 				diagram.addFlowEdge('', draggingConnection.fromNodeId, hoveredNodeId);
 			}
+			// Handle resize end
+			handleResizeEnd();
+			// Handle waypoint drag end
+			if (draggingWaypoint) {
+				diagram.pushHistory('Move waypoint');
+				draggingWaypoint = null;
+			}
+			// Physics: unpin dragged entities
+			if (diagram.physicsMode && dragging) {
+				for (const id of dragging.offsets.keys()) {
+					diagram.physicsUnpin(id);
+				}
+			}
+			// Clear local dragging IDs (resume remote physics lerp)
+			if (dragging) {
+				diagram.localDraggingIds = new Set();
+			}
 			dragging = null;
+			diagram.flushMovePush();
 			draggingNote = null;
 			panning = null;
 			draggingConnection = null;
 			hoveredNodeId = null;
+			alignmentGuides = { vertical: [], horizontal: [] };
 		} else if (e.button === 2 && selecting) {
 			// Finish marquee selection
 			const screenDist = Math.hypot(e.clientX - selecting.screenX, e.clientY - selecting.screenY);
@@ -825,12 +1396,16 @@
 		}
 	}
 
+	let wheelTimer: ReturnType<typeof setTimeout>;
 	function handleWheel(e: WheelEvent) {
 		if (presentation.active) return;
 		e.preventDefault();
 		if (collab.isViewer && !diagram.viewOnly) return;
+		diagram.smoothTransition = true;
 		const delta = e.deltaY > 0 ? 0.9 : 1.1;
 		diagram.setZoom(diagram.zoom * delta);
+		clearTimeout(wheelTimer);
+		wheelTimer = setTimeout(() => { diagram.smoothTransition = false; }, 200);
 	}
 
 	// Touch handlers
@@ -843,9 +1418,9 @@
 			collab.updateCursor(pos.x, pos.y);
 		}
 		if (collab.isViewer) return;
-		// Only handle canvas touches (not entity touches which are handled separately)
+		// Only handle canvas touches (not entity/relationship touches which are handled separately)
 		const target = e.target as Element;
-		if (target.closest('.entity-node') || target.closest('.flow-node') || target.closest('.dfd-node')) return;
+		if (target.closest('.entity-node') || target.closest('.flow-node') || target.closest('.dfd-node') || target.closest('.relationship-edge')) return;
 
 		if (e.touches.length === 1) {
 			// Single finger on canvas → pan
@@ -945,6 +1520,9 @@
 	function handleTouchEnd(_e: TouchEvent) {
 		if (presentation.active) return;
 		clearLongPressTimer();
+		if (touchState?.type === 'drag') {
+			diagram.localDraggingIds = new Set();
+		}
 		touchState = null;
 		// Clear cursor when finger lifts
 		if (collab.connected) {
@@ -1029,47 +1607,88 @@
 			markerWidth="6" markerHeight="6" orient="auto-start-reverse">
 			<path d="M 0 1 L 10 5 L 0 9" fill="#10b981" />
 		</marker>
+		<!-- Gaussian blur for dying entities -->
+		<filter id="dying-blur" x="-10%" y="-10%" width="120%" height="120%">
+			<feGaussianBlur stdDeviation="0" />
+		</filter>
 	</defs>
 
 	<!-- Background grid -->
 	<rect class="canvas-bg" width="100%" height="100%" fill={diagram.showGrid ? 'url(#grid-large)' : colors.canvasBg} />
 
+	<!-- Alignment guides (rendered in pan/zoom space) -->
+	{#if alignmentGuides.vertical.length > 0 || alignmentGuides.horizontal.length > 0}
+		<g transform="translate({diagram.panX}, {diagram.panY}) scale({diagram.zoom})" class="alignment-guides">
+			{#each alignmentGuides.vertical as x}
+				<line
+					x1={x}
+					y1={-10000}
+					x2={x}
+					y2={10000}
+					stroke="#f59e0b"
+					stroke-width="1"
+					stroke-dasharray="4 4"
+					opacity="0.6"
+				/>
+			{/each}
+			{#each alignmentGuides.horizontal as y}
+				<line
+					x1={-10000}
+					y1={y}
+					x2={10000}
+					y2={y}
+					stroke="#f59e0b"
+					stroke-width="1"
+					stroke-dasharray="4 4"
+					opacity="0.6"
+				/>
+			{/each}
+		</g>
+	{/if}
+
 	<!-- Transform group for pan/zoom -->
-	<g transform="translate({diagram.panX}, {diagram.panY}) scale({diagram.zoom})" font-family={diagram.diagramFont} style="will-change: transform;{diagram.smoothTransition ? ' transition: transform 0.3s ease-out;' : ''}">
+	<g transform="translate({diagram.panX}, {diagram.panY}) scale({diagram.zoom})" font-family={diagram.diagramFont} class="diagram-content" class:notation-out={diagram.notationTransitioning} class:notation-in={diagram.notationAppearing} class:notation-morph={diagram.notationMorphing} class:magic-arranging={diagram.animating} style="will-change: transform;{diagram.smoothTransition ? ' transition: transform 0.3s ease-out;' : ''}">
 		{#if diagram.diagramType === 'er'}
 			<!-- Relationships (drawn first, under entities) -->
+			<g class="rels-group">
 			{#each visibleRelData as data}
-				{#if renderer.useDiamond}
-					<ChenDiamond
-						relationship={data.relationship}
-						fromPoint={data.fromPoint}
-						toPoint={data.toPoint}
-						{renderer}
-						selected={diagram.selectedEdgeId === data.relationship.id}
-						highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
-						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
-						animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id)}
-					/>
-				{:else}
-					<RelationshipEdge
-						relationship={data.relationship}
-						fromPoint={data.fromPoint}
-						toPoint={data.toPoint}
-						fromRect={data.fromRect}
-						toRect={data.toRect}
-						{renderer}
-						notation={diagram.notation}
-						selected={diagram.selectedEdgeId === data.relationship.id}
-						highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
-						dimmed={diagram.focusMode && diagram.focusedRelIds != null && !diagram.focusedRelIds.has(data.relationship.id)}
-						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
-						animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id)}
-					/>
+				{#if diagram.notationRelPhase !== 'hidden'}
+					{#if renderer.useDiamond}
+						<ChenDiamond
+							relationship={data.relationship}
+							fromPoint={data.fromPoint}
+							toPoint={data.toPoint}
+							{renderer}
+							selected={diagram.selectedEdgeId === data.relationship.id}
+							highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
+							dying={diagram.dyingRelationshipIds.has(data.relationship.id) || diagram.notationRelPhase === 'undraw'}
+							onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
+							animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id) || diagram.notationRelPhase === 'draw'}
+						/>
+					{:else}
+						<RelationshipEdge
+							relationship={data.relationship}
+							fromPoint={data.fromPoint}
+							toPoint={data.toPoint}
+							fromRect={data.fromRect}
+							toRect={data.toRect}
+							{renderer}
+							notation={diagram.notation}
+							selected={diagram.selectedEdgeId === data.relationship.id}
+							highlighted={highlight.active && highlight.relationshipIds.has(data.relationship.id)}
+							dimmed={diagram.focusMode && diagram.focusedRelIds != null && !diagram.focusedRelIds.has(data.relationship.id)}
+							dying={diagram.dyingRelationshipIds.has(data.relationship.id) || diagram.notationRelPhase === 'undraw'}
+							onclick={() => { if (!collab.isViewer) diagram.selectRelationship(data.relationship.id); }}
+							ontouchstart={(e) => handleRelTouchStart(data.relationship.id, e)}
+							animateIn={(presentation.active && presentation.newlyRevealedRelIds.has(data.relationship.id)) || diagram.newRelationshipIds.has(data.relationship.id) || diagram.notationRelPhase === 'draw'}
+						/>
+					{/if}
 				{/if}
 			{/each}
+			</g>
 
-			<!-- Chen attribute ovals -->
-			{#if renderer.useOvalAttributes}
+			<!-- Chen attribute ovals (delayed until entity morph completes) -->
+			{#if renderer.useOvalAttributes && (!diagram.notationMorphing || diagram.notationOvalsAppearing)}
 				{#each visibleEntities as entity}
 					{@const rect = entityRects.get(entity.id)}
 					{#if rect}
@@ -1082,6 +1701,7 @@
 								totalAttributes={entity.attributes.length}
 								occupiedSides={entityOccupiedSides.get(entity.id) ?? []}
 								{screenToSvg}
+								animateIn={diagram.notationOvalsAppearing}
 							/>
 						{/each}
 					{/if}
@@ -1101,6 +1721,7 @@
 						missingPk={missingPkIds.has(entity.id)}
 						isOrphan={orphanIds.has(entity.id)}
 						dimmed={diagram.focusMode && diagram.focusedEntityIds != null && !diagram.focusedEntityIds.has(entity.id)}
+						morphing={diagram.notationMorphing}
 						onmousedown={(e) => handleEntityMouseDown(entity.id, e)}
 						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(entity.id); }}
 						ontouchstart={(e) => handleEntityTouchStart(entity.id, e)}
@@ -1108,6 +1729,7 @@
 						ondblclick={() => handleEntityDblClick(entity.id)}
 						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(entity.id)) || diagram.newEntityIds.has(entity.id)}
 						dragging={dragging != null && dragging.offsets.has(entity.id)}
+						remoteSelectors={collab.connected ? collab.remoteSelectionsByEntity.get(entity.id) : undefined}
 					/>
 					<!-- Inline entity name editing -->
 					{#if editingEntityId === entity.id}
@@ -1154,26 +1776,51 @@
 			<!-- Dying entities (fade-out ghosts) -->
 			{#each diagram.dyingEntities as entity (entity.id)}
 				{@const rect = entity._dyingRect ?? { x: entity.position.x, y: entity.position.y, width: 160, height: 80 }}
-				<g class="dying-entity" style="transform-origin: {rect.x + rect.width / 2}px {rect.y + rect.height / 2}px;">
+				{@const perimeter = 2 * (rect.width + rect.height)}
+				<g class="dying-entity" style="--perimeter: {perimeter}; transform-origin: {rect.x + rect.width / 2}px {rect.y + rect.height / 2}px;">
+					<!-- Fill rect (fades out) -->
 					<rect
+						class="dying-fill"
 						x={rect.x}
 						y={rect.y}
 						width={rect.width}
 						height={rect.height}
 						fill={entity.color || colors.entityFill}
-						stroke={colors.entityStroke}
-						stroke-width="1.5"
-						opacity="0.5"
+						stroke="none"
 					/>
+					<!-- Border rect (undraw animation) -->
+					<rect
+						class="dying-border"
+						x={rect.x}
+						y={rect.y}
+						width={rect.width}
+						height={rect.height}
+						fill="none"
+						stroke={colors.entityStroke}
+						stroke-width="2"
+						stroke-dasharray={perimeter}
+					/>
+					<!-- Header line (undraw) -->
+					<line
+						class="dying-header-line"
+						x1={rect.x}
+						y1={rect.y + 32}
+						x2={rect.x + rect.width}
+						y2={rect.y + 32}
+						stroke={colors.entityStroke}
+						stroke-width="1"
+						stroke-dasharray={rect.width}
+					/>
+					<!-- Entity name text (fades) -->
 					<text
+						class="dying-text"
 						x={rect.x + rect.width / 2}
-						y={rect.y + rect.height / 2}
+						y={rect.y + 16}
 						text-anchor="middle"
 						dominant-baseline="central"
 						fill={colors.entityHeaderText}
 						font-size="14"
 						font-weight="700"
-						opacity="0.5"
 					>{entity.name}</text>
 				</g>
 			{/each}
@@ -1184,14 +1831,29 @@
 				{@const fromNode = diagram.flowNodes.find(n => n.id === edge.fromNodeId)}
 				{@const toNode = diagram.flowNodes.find(n => n.id === edge.toNodeId)}
 				{#if fromNode && toNode}
+					{@const selected = diagram.selectedEdgeId === edge.id}
 					<FlowEdgeLine
 						{edge}
 						{fromNode}
 						{toNode}
 						offset={flowEdgeOffsets.get(edge.id) ?? 0}
-						selected={diagram.selectedEdgeId === edge.id}
+						{selected}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(edge.id); }}
 					/>
+
+					<!-- Waypoint handles for selected edge -->
+					{#if selected && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+						{@const route = edge.waypoints ? [fromNode.position, ...edge.waypoints, toNode.position] : []}
+						{#if route.length > 0}
+							<WaypointHandles
+								{edge}
+								{route}
+								onDragWaypoint={(index, e) => handleWaypointDragStart(edge.id, index, e)}
+								onAddWaypoint={(index) => addWaypoint(edge.id, index)}
+								onRemoveWaypoint={(index) => removeWaypoint(edge.id, index)}
+							/>
+						{/if}
+					{/if}
 				{/if}
 			{/each}
 
@@ -1209,14 +1871,23 @@
 						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
 						ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
 						oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+						onStartEdit={startEditingFlowNode}
 						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 					/>
 
 					<!-- Connection handles (show only on hover) -->
-					{#if hoveredFlowNodeId === node.id && !dragging && !panning && !draggingConnection && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+					{#if hoveredFlowNodeId === node.id && !dragging && !panning && !draggingConnection && !resizing && !collab.isViewer && !diagram.viewOnly && !presentation.active}
 						<FlowConnectionHandles
 							{node}
 							onStartConnection={handleStartConnection}
+						/>
+					{/if}
+
+					<!-- Resize handles (show only when selected) -->
+					{#if diagram.selectedNodeIdSet.has(node.id) && !dragging && !panning && !draggingConnection && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+						<ResizeHandles
+							{node}
+							onStartResize={(handle, e) => handleResizeStart(node.id, handle, e)}
 						/>
 					{/if}
 				</g>
@@ -1275,6 +1946,11 @@
 					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 				/>
 			{/each}
+		{/if}
+
+		<!-- Data flow particles (all diagram types) -->
+		{#if diagram.showDataFlow && allParticlePaths.length > 0}
+			<DataFlowParticles paths={allParticlePaths} />
 		{/if}
 
 		<!-- Notes (alert-style) -->
@@ -1394,6 +2070,17 @@
 				zoom={diagram.zoom}
 			/>
 		{/each}
+
+		<!-- Ripple effects -->
+		{#each ripples as ripple (ripple.id)}
+			<circle
+				class="ripple-circle"
+				cx={ripple.x}
+				cy={ripple.y}
+				r="80"
+				onanimationend={() => removeRipple(ripple.id)}
+			/>
+		{/each}
 	</g>
 
 	<!-- Empty state -->
@@ -1449,6 +2136,16 @@
 	{/if}
 </svg>
 
+<!-- Inline text editor (HTML overlay on top of SVG) -->
+{#if editingLabel}
+	<InlineTextEditor
+		bind:text={editingLabel.text}
+		rect={editingLabel.rect}
+		onSave={saveInlineEdit}
+		onCancel={cancelInlineEdit}
+	/>
+{/if}
+
 <!-- Context menu (HTML overlay on top of SVG) -->
 {#if contextMenu}
 	<ContextMenu
@@ -1460,13 +2157,61 @@
 {/if}
 
 <style>
-	@keyframes entityDie {
-		from { opacity: 0.5; transform: scale(1); }
-		to { opacity: 0; transform: scale(0.8); }
+	/* Notation switch: line undraw/draw at group level */
+
+	/* Notation switch: entity shimmer */
+	@keyframes notationShimmer {
+		0%   { filter: brightness(1); }
+		40%  { filter: brightness(1.1) drop-shadow(0 0 6px rgba(59,130,246,0.15)); }
+		100% { filter: brightness(1); }
+	}
+	.diagram-content {
+		opacity: 1;
+	}
+	.diagram-content.notation-out {
+		/* Entities just shimmer slightly, not fade */
+	}
+	.diagram-content.notation-in {
+		animation: notationShimmer 0.4s ease-out;
+	}
+	.diagram-content.magic-arranging :global(.entity-node) {
+		filter: drop-shadow(0 0 8px rgba(59,130,246,0.4)) drop-shadow(0 0 3px rgba(59,130,246,0.2));
+		transition: filter 0.3s ease;
+	}
+
+
+	@keyframes entityBorderUndraw {
+		0%   { stroke-dashoffset: 0; opacity: 1; }
+		70%  { opacity: 0.8; }
+		100% { stroke-dashoffset: var(--perimeter); opacity: 0; }
+	}
+	@keyframes entityLineUndraw {
+		0%   { stroke-dashoffset: 0; opacity: 1; }
+		100% { stroke-dashoffset: var(--perimeter); opacity: 0; }
+	}
+	@keyframes entityFillFade {
+		0%   { fill-opacity: 1; }
+		30%  { fill-opacity: 0.5; }
+		100% { fill-opacity: 0; }
+	}
+	@keyframes entityTextFade {
+		0%   { opacity: 1; transform: translate(0, 0); }
+		100% { opacity: 0; transform: translate(0, -4px); }
 	}
 	.dying-entity {
-		animation: entityDie 0.3s ease-in forwards;
 		pointer-events: none;
+	}
+	.dying-entity .dying-border {
+		animation: entityBorderUndraw 0.8s ease-in forwards;
+	}
+	.dying-entity .dying-header-line {
+		animation: entityLineUndraw 0.5s ease-in 0.1s forwards;
+	}
+	.dying-entity .dying-fill {
+		animation: entityFillFade 0.6s ease-out forwards;
+	}
+	.dying-entity .dying-text {
+		animation: entityTextFade 0.5s ease-in forwards;
 	}
 	@keyframes emptyStateIn {
 		from { opacity: 0; transform: translate(0, 12px); }
@@ -1474,5 +2219,18 @@
 	}
 	.empty-state {
 		animation: emptyStateIn 0.5s ease-out;
+	}
+
+	/* Ripple effect */
+	@keyframes rippleExpand {
+		from { r: 0; opacity: 0.6; }
+		to { r: 80; opacity: 0; }
+	}
+	.ripple-circle {
+		fill: none;
+		stroke: rgba(59, 130, 246, 0.5);
+		stroke-width: 2;
+		animation: rippleExpand 0.7s ease-out forwards;
+		pointer-events: none;
 	}
 </style>

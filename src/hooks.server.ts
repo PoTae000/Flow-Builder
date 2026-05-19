@@ -41,7 +41,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		"style-src 'self' fonts.googleapis.com accounts.google.com 'unsafe-inline'",
 		"font-src fonts.gstatic.com",
 		"img-src 'self' data: blob: *.googleusercontent.com",
-		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com wss://signaling.yjs.dev",
+		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com wss://signaling.yjs.dev wss://*.onrender.com",
 		"frame-src accounts.google.com",
 		"object-src 'none'"
 	].join('; '));

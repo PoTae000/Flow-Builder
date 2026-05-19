@@ -81,7 +81,8 @@ class SessionState {
 			flowNodes: $state.snapshot(diagram.flowNodes),
 			flowEdges: $state.snapshot(diagram.flowEdges),
 			dfdNodes: $state.snapshot(diagram.dfdNodes),
-			dfdFlows: $state.snapshot(diagram.dfdFlows)
+			dfdFlows: $state.snapshot(diagram.dfdFlows),
+			customFonts: $state.snapshot(diagram.customFonts)
 		};
 
 		safeSave(
@@ -127,6 +128,20 @@ class SessionState {
 				diagram.flowEdges = data.flowEdges ?? [];
 				diagram.dfdNodes = data.dfdNodes ?? [];
 				diagram.dfdFlows = data.dfdFlows ?? [];
+				diagram.customFonts = data.customFonts ?? [];
+
+				// Re-inject <link> tags for custom fonts
+				if (typeof document !== 'undefined') {
+					for (const font of diagram.customFonts) {
+						if (!document.querySelector(`link[data-custom-font="${font.label}"]`)) {
+							const link = document.createElement('link');
+							link.rel = 'stylesheet';
+							link.href = font.url;
+							link.dataset.customFont = font.label;
+							document.head.appendChild(link);
+						}
+					}
+				}
 			} else {
 				diagram.resetAll();
 			}
@@ -237,6 +252,43 @@ class SessionState {
 		}
 	}
 
+	togglePin(id: string) {
+		const meta = this.diagrams.find((d) => d.id === id);
+		if (!meta) return;
+		meta.pinned = !meta.pinned;
+		this.saveMeta();
+		this.sortDiagrams();
+	}
+
+	addTag(id: string, tag: string) {
+		const meta = this.diagrams.find((d) => d.id === id);
+		if (!meta) return;
+		const trimmedTag = tag.trim();
+		if (!trimmedTag) return;
+		if (!meta.tags) meta.tags = [];
+		if (meta.tags.includes(trimmedTag)) return; // avoid duplicates
+		meta.tags.push(trimmedTag);
+		this.saveMeta();
+	}
+
+	removeTag(id: string, tag: string) {
+		const meta = this.diagrams.find((d) => d.id === id);
+		if (!meta || !meta.tags) return;
+		meta.tags = meta.tags.filter((t) => t !== tag);
+		if (meta.tags.length === 0) delete meta.tags;
+		this.saveMeta();
+	}
+
+	private sortDiagrams() {
+		this.diagrams.sort((a, b) => {
+			// Pinned diagrams first
+			if (a.pinned && !b.pinned) return -1;
+			if (!a.pinned && b.pinned) return 1;
+			// Then by updatedAt descending
+			return b.updatedAt - a.updatedAt;
+		});
+	}
+
 	scheduleSave() {
 		if (this.saveTimer) clearTimeout(this.saveTimer);
 		this.saveTimer = setTimeout(() => {
@@ -287,7 +339,8 @@ class SessionState {
 			flowNodes: $state.snapshot(diagram.flowNodes),
 			flowEdges: $state.snapshot(diagram.flowEdges),
 			dfdNodes: $state.snapshot(diagram.dfdNodes),
-			dfdFlows: $state.snapshot(diagram.dfdFlows)
+			dfdFlows: $state.snapshot(diagram.dfdFlows),
+			customFonts: $state.snapshot(diagram.customFonts)
 		};
 		safeSave(this.key(`diagram:${this.activeDiagramId}`), JSON.stringify(data));
 	}

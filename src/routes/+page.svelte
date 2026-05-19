@@ -27,6 +27,11 @@
 	import OnboardingOverlayComponent from '$lib/components/ui/OnboardingOverlay.svelte';
 	import CollabIndicator from '$lib/components/ui/CollabIndicator.svelte';
 	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
+	import { autoSave, registerSession as registerAutoSaveSession } from '$lib/stores/auto-save.svelte';
+	import { pickSaveLocation, writeToFile } from '$lib/utils/file-system';
+	import { suggestions } from '$lib/stores/suggestions.svelte';
+	import SuggestionBar from '$lib/components/ui/SuggestionBar.svelte';
+
 
 	let ready = $state(false);
 	let showLogin = $state(false);
@@ -222,7 +227,13 @@
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !isInput && !hasTextSelection) {
 			e.preventDefault();
 			diagram.selectAll();
-		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && !isInput) {
+		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+			e.preventDefault();
+			handleSave();
+		} else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyD' && !isInput) {
+			e.preventDefault();
+			diagram.toggleDataFlow();
+		} else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyD' && !isInput) {
 			e.preventDefault();
 			diagram.duplicateSelected();
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') {
@@ -232,9 +243,12 @@
 			searchIndex = 0;
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyL' && !isInput) {
 			e.preventDefault();
-			const timedOut = diagram.animateLayout();
-			if (timedOut) {
-				toast.warning('Layout ใช้เวลานานเกินไป ผลลัพธ์อาจไม่สมบูรณ์');
+			if (collab.connected && collab.users.length > 1) {
+				collab.requestPermission('auto-layout').then(granted => {
+					if (granted) diagram.animateLayout();
+				});
+			} else {
+				diagram.animateLayout();
 			}
 		} else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyG' && !isInput) {
 			e.preventDefault();
@@ -302,6 +316,9 @@
 		if (isFirstChoose && !localStorage.getItem('onboarding-done')) {
 			triggerOnboarding();
 		}
+
+		// Prompt for auto-save after choosing diagram type
+		promptForAutoSaveLocation();
 	}
 
 	function triggerOnboarding() {
@@ -314,24 +331,29 @@
 		collab.loadUserName();
 		registerSession(session);
 		registerCollabForSession(collab);
+		registerAutoSaveSession(session);
 
-		// Auto-join: URL param ?room=xxx takes priority, then saved room from refresh
+		// Auto-join: URL param ?room=xxx&token=yyy takes priority, then saved room from refresh
 		const params = new URLSearchParams(window.location.search);
 		const roomParam = params.get('room');
+		const tokenParam = params.get('token');
 		if (roomParam) {
-			showCollab = true;
-			// Check if we're the host of this room (preserved from previous session)
+			// Check if we're already in this room (refresh) or joining fresh
 			let isHost = false;
+			let isRejoin = false;
 			try {
 				const saved = localStorage.getItem('collab-room');
 				if (saved) {
 					const parsed = JSON.parse(saved);
-					if (parsed.roomId === roomParam.toLowerCase() && parsed.isHost) {
-						isHost = true;
+					if (parsed.roomId === roomParam.toLowerCase()) {
+						isRejoin = true;
+						if (parsed.isHost) isHost = true;
 					}
 				}
 			} catch { /* ignore */ }
-			collab.joinRoom(roomParam.toLowerCase(), isHost);
+			// Only show modal for fresh joins, not refreshes
+			if (!isRejoin) showCollab = true;
+			collab.joinRoom(roomParam.toLowerCase(), isHost, tokenParam || undefined);
 		} else {
 			collab.tryRejoin();
 		}
@@ -402,10 +424,76 @@
 		};
 	});
 
+	// Sync auto-save with active diagram
+	$effect(() => {
+		if (session.activeDiagramId) {
+			autoSave.onDiagramSwitch();
+		}
+	});
+
+	// Auto-start/stop auto-save timer when file handle or enabled state changes
+	$effect(() => {
+		if (autoSave.fileHandle && autoSave.enabled) {
+			autoSave.start();
+		}
+		return () => autoSave.stop();
+	});
+
+	async function handleSave() {
+		// If auto-save file handle exists, save there directly
+		if (autoSave.fileHandle) {
+			const ok = await autoSave.saveNow();
+			if (ok) toast.success(`บันทึกแล้ว: ${autoSave.fileHandle.fileName}`);
+			return;
+		}
+
+		// No file handle yet — open save picker
+		const name = diagram.diagramName || 'diagram';
+		const handle = await pickSaveLocation(`${name}.erd`);
+		if (handle) {
+			autoSave.setFileHandle(handle);
+			toast.success(`บันทึกแล้ว: ${handle.fileName}`);
+		}
+	}
+
+	// Track if user has dismissed auto-save prompt (per session)
+	let autoSavePromptDismissed = $state(false);
+
+	async function promptForAutoSaveLocation() {
+		if (!autoSave.isSupported || diagram.viewOnly) return;
+		if (autoSavePromptDismissed || autoSave.hasAutoSave) return;
+
+		autoSavePromptDismissed = true;
+
+		// Ask user if they want to set up auto-save
+		const wantsAutoSave = await dialog.confirm({
+			title: 'ตั้งค่า Auto-Save',
+			message: 'คุณต้องการเปิดใช้งาน Auto-Save สำหรับไดอะแกรมนี้หรือไม่?\n\nไฟล์จะถูกบันทึกอัตโนมัติทุก 10 วินาที',
+			confirmText: 'เปิดใช้งาน',
+			cancelText: 'ไม่ใช่ตอนนี้'
+		});
+
+		if (wantsAutoSave) {
+			const handle = await pickSaveLocation();
+			if (handle) {
+				autoSave.setFileHandle(handle);
+				toast.success(`Auto-Save เปิดใช้งานแล้ว: ${handle.fileName}`);
+			}
+		}
+	}
+
 	// Watch for Google sign-in completing while on login screen
 	$effect(() => {
 		if (showLogin && auth.isSignedIn) {
 			enterApp();
+		}
+	});
+
+	// Sync local selection → collab awareness
+	$effect(() => {
+		const ids = diagram.selectedNodeIds;
+		if (collab.connected) {
+			collab.updateSelection(ids);
 		}
 	});
 
@@ -432,10 +520,34 @@
 		diagram.dfdNodes;
 		diagram.dfdFlows;
 
-		if (session.activeDiagramId && !session.suppressAutoSave) {
+		if (session.activeDiagramId && !session.suppressAutoSave && !diagram.timelinePreviewActive) {
 			session.scheduleSave();
 		}
 	});
+
+	// Smart suggestions: auto-fetch after diagram changes (debounced 3s)
+	let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		// Track entity/relationship changes
+		const entityCount = diagram.entities.length;
+		const relCount = diagram.relationships.length;
+		// Trigger only when: ER mode, >=3 entities, not in collab, cooldown passed, not dismissed
+		if (diagram.diagramType !== 'er' || entityCount < 3 || collab.connected || !suggestions.canFetch) {
+			return;
+		}
+		if (suggestionTimer) clearTimeout(suggestionTimer);
+		suggestionTimer = setTimeout(() => {
+			suggestionTimer = null;
+			if (diagram.diagramType === 'er' && diagram.entities.length >= 3 && !collab.connected && suggestions.canFetch) {
+				suggestions.fetchSuggestions(
+					$state.snapshot(diagram.entities),
+					$state.snapshot(diagram.relationships)
+				);
+			}
+		}, 3000);
+		return () => { if (suggestionTimer) { clearTimeout(suggestionTimer); suggestionTimer = null; } };
+	});
+
 
 	// Save viewport (pan/zoom) separately with longer debounce — no cloud push
 	let viewportTimer: ReturnType<typeof setTimeout> | null = null;
@@ -571,7 +683,10 @@
 								if (await collab.requestPermission('translate')) showTranslateModal = true;
 							}}
 							ongenerate={() => showGenerateCode = true}
-							onchat={() => showChat = !showChat}
+						onchat={() => {
+							console.log("[DEBUG] Chat clicked, showChat:", showChat, "ChatPanel:", !!ChatPanel);
+							showChat = !showChat;
+						}}
 							oncollab={() => showCollab = !showCollab}
 							onpresent={async () => {
 								if (await collab.requestPermission('presentation')) {
@@ -602,6 +717,11 @@
 					</div>
 				{/if}
 
+				<!-- Smart suggestions bar -->
+				{#if !showPresentation && !diagram.viewOnly && diagram.diagramType === 'er' && !showChat}
+					<SuggestionBar />
+				{/if}
+
 				<!-- SVG Canvas -->
 				<DiagramCanvas bind:this={canvasComponent} />
 
@@ -610,9 +730,10 @@
 					<Minimap />
 				{/if}
 
+
 				<!-- Collab indicator -->
 				{#if collab.connected}
-					<div class="absolute top-3 left-3 z-10">
+					<div class="absolute bottom-3 left-3 z-10">
 						<CollabIndicator />
 					</div>
 				{/if}

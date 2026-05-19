@@ -38,7 +38,12 @@ export interface FlowNode {
 	position: Position;
 	color?: string;
 	borderRadius?: number; // For start-end nodes (0-50, default 20)
+	width?: number; // Default 140
+	height?: number; // Default 60
 }
+
+export type LineStyle = 'orthogonal' | 'straight' | 'curved';
+export type StrokeDash = 'solid' | 'dashed' | 'dotted';
 
 export interface FlowEdge {
 	id: string;
@@ -46,4 +51,9 @@ export interface FlowEdge {
 	fromNodeId: string;
 	toNodeId: string;
 	condition?: 'yes' | 'no';
+	waypoints?: Position[]; // Manual bend points
+	lineStyle?: LineStyle; // Default 'orthogonal'
+	strokeWidth?: number; // Default 1.5
+	strokeDash?: StrokeDash; // Default 'solid'
+	edgeColor?: string; // Custom color
 }

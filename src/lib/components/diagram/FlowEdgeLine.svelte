@@ -21,13 +21,24 @@
 
 	const colors = $derived(theme.colors);
 
-	const NODE_W = 140;
-	const NODE_H = 60;
+	const lineStyle = $derived(edge.lineStyle || 'orthogonal');
+	const strokeWidth = $derived(edge.strokeWidth || 1.5);
+	const strokeDash = $derived(edge.strokeDash || 'solid');
+	const edgeColor = $derived(edge.edgeColor || colors.relationshipStroke);
+
+	const dashArray = $derived(() => {
+		if (strokeDash === 'dashed') return '8 4';
+		if (strokeDash === 'dotted') return '2 2';
+		return '0';
+	});
 
 	function getPort(node: FlowNode, side: 'top' | 'bottom' | 'left' | 'right') {
 		const { x: cx, y: cy } = node.position;
+		const W = node.width || 140;
+		const H = node.height || 60;
+
 		if (node.type === 'decision') {
-			const hw = NODE_W / 2 + 10, hh = NODE_H / 2 + 5;
+			const hw = W / 2 + 10, hh = H / 2 + 5;
 			if (side === 'top') return { x: cx, y: cy - hh };
 			if (side === 'bottom') return { x: cx, y: cy + hh };
 			if (side === 'left') return { x: cx - hw, y: cy };
@@ -40,7 +51,7 @@
 			if (side === 'left') return { x: cx - r, y: cy };
 			return { x: cx + r, y: cy };
 		}
-		const hw = NODE_W / 2, hh = NODE_H / 2;
+		const hw = W / 2, hh = H / 2;
 		if (side === 'top') return { x: cx, y: cy - hh };
 		if (side === 'bottom') return { x: cx, y: cy + hh };
 		if (side === 'left') return { x: cx - hw, y: cy };
@@ -50,35 +61,60 @@
 	const LOOP_OFFSET = 40;
 
 	const route = $derived.by(() => {
+		// If edge has custom waypoints, use them
+		if (edge.waypoints && edge.waypoints.length > 0) {
+			const dx = toNode.position.x - fromNode.position.x;
+			const dy = toNode.position.y - fromNode.position.y;
+
+			let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+			let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
+
+			// Choose fromSide
+			if (fromNode.type === 'decision') {
+				if (Math.abs(dx) > Math.abs(dy) * 1.5) {
+					fromSide = dx > 0 ? 'right' : 'left';
+				} else {
+					fromSide = 'bottom';
+				}
+			} else {
+				fromSide = dy >= 0 ? 'bottom' : 'top';
+			}
+
+			// Choose toSide
+			if (toNode.type === 'decision') {
+				toSide = 'top';
+			} else {
+				toSide = dy >= 0 ? 'top' : 'bottom';
+			}
+
+			const fp = getPort(fromNode, fromSide);
+			const tp = getPort(toNode, toSide);
+
+			return [fp, ...edge.waypoints, tp];
+		}
+
+		// Otherwise, use default orthogonal routing
 		const dx = toNode.position.x - fromNode.position.x;
 		const dy = toNode.position.y - fromNode.position.y;
-
-		// Simple rules:
-		// 1. Prefer top-to-bottom flow (fromSide=bottom, toSide=top)
-		// 2. Decision nodes: exit from bottom/left/right only, enter from top only
 
 		let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
 		let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
 
 		// Choose fromSide
 		if (fromNode.type === 'decision') {
-			// Decision: prefer bottom, or left/right if target is to the side
 			if (Math.abs(dx) > Math.abs(dy) * 1.5) {
 				fromSide = dx > 0 ? 'right' : 'left';
 			} else {
 				fromSide = 'bottom';
 			}
 		} else {
-			// Normal: prefer bottom (downward)
 			fromSide = dy >= 0 ? 'bottom' : 'top';
 		}
 
 		// Choose toSide
 		if (toNode.type === 'decision') {
-			// Decision: ALWAYS enter from top
 			toSide = 'top';
 		} else {
-			// Normal: enter from top if coming from above
 			toSide = dy >= 0 ? 'top' : 'bottom';
 		}
 
@@ -87,7 +123,6 @@
 
 		// Simple 4-point orthogonal path
 		const midY = (fp.y + tp.y) / 2 + offset;
-		const midX = (fp.x + tp.x) / 2 + offset;
 
 		// Vertical-first path (most common for top-to-bottom flow)
 		return [
@@ -98,9 +133,43 @@
 		];
 	});
 
-	const pathD = $derived(
-		route.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-	);
+	const pathD = $derived.by(() => {
+		if (lineStyle === 'straight') {
+			// Direct line from start to end
+			return `M${route[0].x},${route[0].y} L${route[route.length - 1].x},${route[route.length - 1].y}`;
+		} else if (lineStyle === 'curved') {
+			// Smooth bezier curve through waypoints
+			if (route.length === 2) {
+				return `M${route[0].x},${route[0].y} L${route[1].x},${route[1].y}`;
+			}
+
+			let d = `M${route[0].x},${route[0].y}`;
+			for (let i = 0; i < route.length - 1; i++) {
+				const p1 = route[i];
+				const p2 = route[i + 1];
+
+				if (i === 0) {
+					// First segment - control point biased toward start
+					const cp1x = p1.x + (p2.x - p1.x) * 0.5;
+					const cp1y = p1.y;
+					const cp2x = p2.x;
+					const cp2y = p1.y + (p2.y - p1.y) * 0.5;
+					d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+				} else {
+					// Smooth curve segments
+					const cp1x = p1.x;
+					const cp1y = p1.y + (p2.y - p1.y) * 0.5;
+					const cp2x = p2.x;
+					const cp2y = p1.y + (p2.y - p1.y) * 0.5;
+					d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+				}
+			}
+			return d;
+		} else {
+			// Orthogonal (default)
+			return route.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+		}
+	});
 
 	// Label at center of path
 	const labelPos = $derived.by(() => {
@@ -166,8 +235,9 @@
 	<!-- Visible line -->
 	<path
 		d={pathD}
-		stroke={selected ? colors.selectedStroke : colors.relationshipStroke}
-		stroke-width={selected ? 2 : 1.5}
+		stroke={selected ? colors.selectedStroke : edgeColor}
+		stroke-width={selected ? strokeWidth + 0.5 : strokeWidth}
+		stroke-dasharray={dashArray()}
 		fill="none"
 		marker-end="url(#flow-arrow)"
 	/>

@@ -2,6 +2,7 @@
 	import { collab } from '$lib/stores/collab.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { PermissionAction } from '$lib/stores/collab.svelte';
+	import VoiceChat from './VoiceChat.svelte';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -38,7 +39,23 @@
 			collab.userPicture = auth.user.picture;
 		}
 		collab.saveUserName();
-		collab.joinRoom(joinId.trim().toLowerCase());
+
+		// Check if user pasted a full URL
+		const input = joinId.trim();
+		try {
+			const url = new URL(input);
+			const roomParam = url.searchParams.get('room');
+			const tokenParam = url.searchParams.get('token');
+			if (roomParam) {
+				collab.joinRoom(roomParam.toLowerCase(), false, tokenParam || undefined);
+				return;
+			}
+		} catch {
+			// Not a URL, treat as room code
+		}
+
+		// Just a room code (no token - won't work for secure rooms)
+		collab.joinRoom(input.toLowerCase());
 	}
 
 	function handleLeave() {
@@ -197,41 +214,57 @@
 			</div>
 
 			<!-- Join room -->
-			<div class="flex gap-2">
-				<input
-					type="text"
-					bind:value={joinId}
-					placeholder="รหัสห้อง..."
-					maxlength="8"
-					class="flex-1 rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-1.5 text-sm text-[var(--ui-text)] placeholder:text-[var(--ui-text-muted)] focus:border-[var(--ui-accent)] focus:outline-none"
-					onkeydown={(e) => e.key === 'Enter' && handleJoin()}
-				/>
-				<button
-					class="rounded bg-[var(--ui-accent)] px-4 py-1.5 text-sm font-medium text-[var(--ui-accent-text)] transition hover:opacity-90 disabled:opacity-50"
-					onclick={handleJoin}
-					disabled={!joinId.trim()}
-				>
-					เข้าร่วม
-				</button>
-			</div>
-		{:else}
-			<!-- Room info -->
-			<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-3">
-				<div class="flex items-center justify-between">
-					<div>
-						<span class="text-xs text-[var(--ui-text-muted)]">รหัสห้อง</span>
-						<div class="text-lg font-mono font-bold tracking-wider text-[var(--ui-text)] select-all">{collab.roomId}</div>
-					</div>
+			<div>
+				<div class="mb-1.5 flex items-center gap-1.5">
+					<svg class="h-3.5 w-3.5 text-[var(--ui-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+					<span class="text-xs text-[var(--ui-text-muted)]">วางลิงก์ที่คัดลอกจากเพื่อน</span>
+				</div>
+				<div class="flex gap-2">
+					<input
+						type="text"
+						bind:value={joinId}
+						placeholder="https://flow-builder.suepskun.online/?room=..."
+						class="flex-1 rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-1.5 text-xs text-[var(--ui-text)] placeholder:text-[var(--ui-text-muted)] focus:border-[var(--ui-accent)] focus:outline-none"
+						onkeydown={(e) => e.key === 'Enter' && handleJoin()}
+					/>
 					<button
-						class="rounded px-3 py-1.5 text-xs transition {copied ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-[var(--ui-hover)] text-[var(--ui-text-secondary)] hover:text-[var(--ui-text)]'}"
-						onclick={copyLink}
+						class="rounded bg-[var(--ui-accent)] px-4 py-1.5 text-sm font-medium text-[var(--ui-accent-text)] transition hover:opacity-90 disabled:opacity-50"
+						onclick={handleJoin}
+						disabled={!joinId.trim()}
 					>
-						{copied ? 'คัดลอกแล้ว!' : 'คัดลอกลิงก์'}
+						เข้าร่วม
 					</button>
 				</div>
-				{#if collab.isHost}
-					<span class="mt-1 inline-block rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">Host</span>
-				{/if}
+			</div>
+		{:else}
+			<!-- Share link (Private & Secure) -->
+			<div class="rounded border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] p-3">
+				<div class="mb-2 flex items-center gap-1.5">
+					<svg class="h-4 w-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+					<span class="text-xs font-medium text-[var(--ui-text)]">ห้องส่วนตัว (Private Room)</span>
+					{#if collab.isHost}
+						<span class="ml-auto inline-block rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">Host</span>
+					{/if}
+				</div>
+				<p class="mb-3 text-xs text-[var(--ui-text-muted)]">
+					แชร์ลิงก์นี้ให้เพื่อนเท่านั้น มีการเข้ารหัสความปลอดภัย
+				</p>
+				<button
+					class="w-full rounded px-4 py-2 text-sm font-medium transition {copied ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-[var(--ui-accent)] text-[var(--ui-accent-text)] hover:opacity-90'}"
+					onclick={copyLink}
+				>
+					{#if copied}
+						<span class="flex items-center justify-center gap-2">
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+							คัดลอกลิงก์แล้ว!
+						</span>
+					{:else}
+						<span class="flex items-center justify-center gap-2">
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+							คัดลอกลิงก์เชิญ
+						</span>
+					{/if}
+				</button>
 			</div>
 
 			<!-- Sync status -->
@@ -241,6 +274,34 @@
 					กำลังรอผู้ร่วมงาน...
 				</div>
 			{/if}
+
+		<!-- Last save info -->
+		{#if collab.lastSaveUserName && collab.lastSaveTimestamp}
+			{@const secondsAgo = Math.floor((Date.now() - collab.lastSaveTimestamp) / 1000)}
+			{@const minutesAgo = Math.floor(secondsAgo / 60)}
+			{@const timeText = secondsAgo < 60 ? `${secondsAgo} วินาทีที่แล้ว` : `${minutesAgo} นาทีที่แล้ว`}
+			<div class="flex items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 dark:border-green-800 dark:bg-green-900/20">
+				{#if collab.lastSaveUserPicture}
+					<img
+						src={collab.lastSaveUserPicture}
+						alt={collab.lastSaveUserName}
+						class="h-5 w-5 rounded-full"
+						referrerpolicy="no-referrer"
+					/>
+				{:else}
+					<div class="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-[10px] font-bold text-white">
+						{collab.lastSaveUserName.charAt(0).toUpperCase()}
+					</div>
+				{/if}
+				<div class="flex-1 min-w-0">
+					<div class="text-xs text-green-700 dark:text-green-400">
+						<span class="font-medium">{collab.lastSaveUserName}</span> บันทึกไปแล้ว
+					</div>
+					<div class="text-[10px] text-green-600 dark:text-green-500">{timeText}</div>
+				</div>
+				<svg class="h-4 w-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+			</div>
+		{/if}
 
 			<!-- Users list -->
 			<div>
@@ -326,6 +387,9 @@
 					{/each}
 				</div>
 			</div>
+
+			<!-- Voice Chat -->
+			<VoiceChat />
 
 			<!-- Leave button -->
 			<button

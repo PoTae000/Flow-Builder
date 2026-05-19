@@ -4,7 +4,17 @@ import type { Position } from '$lib/types/geometry';
 import type { DiagramType } from '$lib/types/diagram';
 import type { FlowNode, FlowNodeType, FlowEdge } from '$lib/types/flowchart';
 import type { DFDNode, DFDNodeType, DFDFlow } from '$lib/types/context-diagram';
+import type { CustomFont } from '$lib/types/session';
 import { generateId } from '$lib/utils/id';
+import { PhysicsSimulation } from '$lib/utils/physics-simulation';
+// ELK module cache — loaded once, reused on every layout press
+let _elkPromise: Promise<typeof import('$lib/utils/elk-layout')> | null = null;
+function getElk() {
+	if (!_elkPromise) _elkPromise = import('$lib/utils/elk-layout');
+	return _elkPromise;
+}
+// Pre-warm: start loading immediately on client
+if (typeof window !== 'undefined') getElk().catch(() => {});
 
 // Lazy import to avoid circular dependency — collab imports diagram
 let _collab: typeof import('./collab.svelte')['collab'] | null = null;
@@ -54,6 +64,9 @@ export class DiagramState {
 	// Diagram font
 	diagramFont = $state("'TH Sarabun PSK', 'Sarabun', sans-serif");
 
+	// Custom fonts (from Google Fonts URL)
+	customFonts = $state<CustomFont[]>([]);
+
 	// Pan & zoom
 	panX = $state(0);
 	panY = $state(0);
@@ -89,12 +102,24 @@ export class DiagramState {
 	// View-only mode (shared link)
 	viewOnly = $state(false);
 
+	// Batch mode: skip history pushes (used by agent for batch undo)
+	_skipHistory = false;
+
 	// Animation: pop-in / pop-out for entities & nodes
 	newEntityIds = $state<Set<string>>(new Set());
 	dyingEntities = $state<Array<Entity & { _dyingRect?: { x: number; y: number; width: number; height: number } }>>([]);
 
 	// Animation: relationship line draw
 	newRelationshipIds = $state<Set<string>>(new Set());
+
+	// Animation: relationship fade-out on delete
+	dyingRelationshipIds = $state<Set<string>>(new Set());
+
+	// Data flow animation
+	showDataFlow = $state(false);
+
+	// IDs currently being dragged by local user (skip remote physics lerp for these)
+	localDraggingIds = $state<Set<string>>(new Set());
 
 	// Focus mode
 	focusMode = $state(false);
@@ -125,10 +150,26 @@ export class DiagramState {
 	// Smooth CSS transition flag for pan/zoom
 	smoothTransition = $state(false);
 
+	// Notation crossfade transition flags
+	notationTransitioning = $state(false);
+	notationAppearing = $state(false);
+	// Notation line transition: 'undraw' = retracting, 'hidden' = invisible, 'draw' = extending
+	notationRelPhase = $state<'undraw' | 'hidden' | 'draw' | null>(null);
+	// Notation morph: entity rects animate size/position changes
+	notationMorphing = $state(false);
+	// Notation ovals: Chen attribute ovals burst after entity morph completes
+	notationOvalsAppearing = $state(false);
+
+	// Timeline preview mode (restores without pushing history)
+	timelinePreviewActive = $state(false);
+	private _previewSavedState: string | null = null;
+
 	// Public history access
 	get canUndo() { return this.history.length > 0; }
 	get canRedo() { return this.future.length > 0; }
 	get historyEntries() { return this.historyLabels; }
+	get historySnapshots(): string[] { return this.history; }
+	get historyLength(): number { return this.history.length; }
 
 	// Derived
 	entityMap = $derived(
@@ -160,8 +201,82 @@ export class DiagramState {
 
 	private restore(json: string) {
 		const data = JSON.parse(json);
-		this.entities = data.entities;
-		this.relationships = data.relationships;
+
+		// Save dying IDs before clearing — dying rels are still in this.relationships
+		// but should be treated as "not existing" for restore animation detection
+		const wasDying = new Set(this.dyingRelationshipIds);
+		// Clear all dying states — restore sets up its own animations
+		// This also cancels pending removeRelationship timeouts (they check dyingRelationshipIds)
+		this.dyingRelationshipIds = new Set();
+
+		// Detect relationship changes for animations
+		// Exclude previously-dying rels so they're detected as "restored" and get animateIn
+		const oldRelIds = new Set(
+			this.relationships.filter(r => !wasDying.has(r.id)).map(r => r.id)
+		);
+		const newRels: typeof this.relationships = data.relationships;
+		const newRelIds = new Set(newRels.map(r => r.id));
+
+		// Relationships that are coming back (were deleted, now restored) → line-draw
+		const restoredIds = newRels.filter(r => !oldRelIds.has(r.id)).map(r => r.id);
+		// Relationships that are going away (existed, now removed) → line-undraw
+		const removedRels = this.relationships.filter(r => !newRelIds.has(r.id));
+		const removedIds = removedRels.map(r => r.id);
+
+		// Trigger line-draw for restored relationships
+		if (restoredIds.length > 0) {
+			this.newRelationshipIds = new Set([...this.newRelationshipIds, ...restoredIds]);
+			setTimeout(() => {
+				this.newRelationshipIds = new Set(
+					[...this.newRelationshipIds].filter(id => !restoredIds.includes(id))
+				);
+			}, 3500);
+		}
+
+		// Trigger line-undraw for removed relationships
+		if (removedIds.length > 0) {
+			this.dyingRelationshipIds = new Set([...this.dyingRelationshipIds, ...removedIds]);
+			// Keep removed relationships visible during undraw animation
+			this.relationships = [...newRels, ...removedRels];
+			setTimeout(() => {
+				this.relationships = this.relationships.filter(r => !removedIds.includes(r.id));
+				this.dyingRelationshipIds = new Set(
+					[...this.dyingRelationshipIds].filter(id => !removedIds.includes(id))
+				);
+			}, 2500);
+		} else {
+			this.relationships = newRels;
+		}
+
+		// Detect entity changes for animations
+		const oldEntIds = new Set(this.entities.map(e => e.id));
+		const newEnts: typeof this.entities = data.entities;
+		const newEntIds = new Set(newEnts.map(e => e.id));
+
+		// Entities coming back → pop-in animation
+		const restoredEntIds = newEnts.filter(e => !oldEntIds.has(e.id)).map(e => e.id);
+		if (restoredEntIds.length > 0) {
+			this.newEntityIds = new Set([...this.newEntityIds, ...restoredEntIds]);
+			setTimeout(() => {
+				this.newEntityIds = new Set(
+					[...this.newEntityIds].filter(id => !restoredEntIds.includes(id))
+				);
+			}, 600);
+		}
+
+		// Entities going away → dying animation
+		const removedEnts = this.entities.filter(e => !newEntIds.has(e.id));
+		if (removedEnts.length > 0) {
+			const dyingEnts = removedEnts.map(e => {
+				const box = this.estimateEntityBox(e);
+				return { ...e, _dyingRect: { x: e.position.x, y: e.position.y, width: box.w, height: box.h } };
+			});
+			this.dyingEntities = [...this.dyingEntities, ...dyingEnts];
+			const dyingIds = new Set(removedEnts.map(e => e.id));
+			setTimeout(() => { this.dyingEntities = this.dyingEntities.filter(e => !dyingIds.has(e.id)); }, 900);
+		}
+
+		this.entities = newEnts;
 		this.notes = data.notes ?? [];
 		this.flowNodes = data.flowNodes ?? [];
 		this.flowEdges = data.flowEdges ?? [];
@@ -171,6 +286,7 @@ export class DiagramState {
 	}
 
 	pushHistory(label?: string) {
+		if (this._skipHistory) return;
 		this.history.push(this.snapshot());
 		this.historyLabels.push(label ?? this.autoLabel());
 		if (this.history.length > this.maxHistory) {
@@ -248,7 +364,7 @@ export class DiagramState {
 		if (dying) {
 			const box = this.estimateEntityBox(dying);
 			this.dyingEntities = [...this.dyingEntities, { ...dying, _dyingRect: { x: dying.position.x, y: dying.position.y, width: box.w, height: box.h } }];
-			setTimeout(() => { this.dyingEntities = this.dyingEntities.filter((e) => e.id !== id); }, 300);
+			setTimeout(() => { this.dyingEntities = this.dyingEntities.filter((e) => e.id !== id); }, 900);
 		}
 		const removedRels = this.relationships.filter((r) => r.entityIds.includes(id));
 		this.relationships = this.relationships.filter(
@@ -275,7 +391,7 @@ export class DiagramState {
 		if (dyingEnts.length > 0) {
 			this.dyingEntities = [...this.dyingEntities, ...dyingEnts];
 			const dyingIds = new Set(dyingEnts.map((e) => e.id));
-			setTimeout(() => { this.dyingEntities = this.dyingEntities.filter((e) => !dyingIds.has(e.id)); }, 300);
+			setTimeout(() => { this.dyingEntities = this.dyingEntities.filter((e) => !dyingIds.has(e.id)); }, 900);
 		}
 		const removedRels = this.relationships.filter(
 			(r) => r.entityIds.some((eid) => idSet.has(eid))
@@ -299,6 +415,14 @@ export class DiagramState {
 		entity.isLocked = !entity.isLocked;
 		getCollab()?.pushEntityChange(entity);
 	}
+
+	// Throttle collab pushes during multi-drag (push max every 100ms)
+	private _moveThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+	private _movePendingIds = new Set<string>();
+	private _moveMultiDrag = false;
+
+	/** Call before starting a multi-entity drag to enable throttling */
+	startMultiDrag() { this._moveMultiDrag = true; }
 
 	moveEntity(id: string, position: Position) {
 		this.cancelAnimation();
@@ -327,7 +451,52 @@ export class DiagramState {
 			}
 
 			entity.position = position;
-			getCollab()?.pushEntityChange(entity);
+
+			const c = getCollab();
+			if (c) {
+				if (!this._moveMultiDrag) {
+					// Single entity: push immediately (no lag)
+					c.pushEntityChange(entity);
+				} else {
+					// Multi-drag: throttle to avoid flooding Y.js
+					this._movePendingIds.add(id);
+					if (!this._moveThrottleTimer) {
+						this._moveThrottleTimer = setTimeout(() => {
+							this._moveThrottleTimer = null;
+							this._flushPendingMoves(c);
+						}, 100);
+					}
+				}
+			}
+		}
+	}
+
+	private _flushPendingMoves(c: NonNullable<ReturnType<typeof getCollab>>) {
+		for (const pendingId of this._movePendingIds) {
+			if (pendingId.startsWith('flow:')) {
+				const n = this.flowNodes.find(nd => nd.id === pendingId.slice(5));
+				if (n) c.pushFlowNodeChange(n);
+			} else if (pendingId.startsWith('dfd:')) {
+				const n = this.dfdNodes.find(nd => nd.id === pendingId.slice(4));
+				if (n) c.pushDFDNodeChange(n);
+			} else {
+				const e = this.entities.find(ent => ent.id === pendingId);
+				if (e) c.pushEntityChange(e);
+			}
+		}
+		this._movePendingIds.clear();
+	}
+
+	/** Flush any pending move pushes (call on drag end) */
+	flushMovePush() {
+		this._moveMultiDrag = false;
+		if (this._moveThrottleTimer) {
+			clearTimeout(this._moveThrottleTimer);
+			this._moveThrottleTimer = null;
+		}
+		const c = getCollab();
+		if (c && this._movePendingIds.size > 0) {
+			this._flushPendingMoves(c);
 		}
 	}
 
@@ -425,7 +594,7 @@ export class DiagramState {
 		this.newRelationshipIds = new Set([...this.newRelationshipIds, rel.id]);
 		setTimeout(() => {
 			this.newRelationshipIds = new Set([...this.newRelationshipIds].filter(id => id !== rel.id));
-		}, 800);
+		}, 3500);
 		getCollab()?.pushRelationshipChange(rel);
 		return rel;
 	}
@@ -443,8 +612,15 @@ export class DiagramState {
 
 	removeRelationship(id: string) {
 		this.pushHistory();
-		this.relationships = this.relationships.filter((r) => r.id !== id);
 		if (this.selectedEdgeId === id) this.selectedEdgeId = null;
+		// Trigger dying animation (line undraw + buffer)
+		this.dyingRelationshipIds = new Set([...this.dyingRelationshipIds, id]);
+		setTimeout(() => {
+			// Only remove if still dying (undo may have cleared it)
+			if (!this.dyingRelationshipIds.has(id)) return;
+			this.relationships = this.relationships.filter((r) => r.id !== id);
+			this.dyingRelationshipIds = new Set([...this.dyingRelationshipIds].filter(rid => rid !== id));
+		}, 2500);
 		getCollab()?.pushRelationshipRemove(id);
 	}
 
@@ -454,10 +630,62 @@ export class DiagramState {
 		getCollab()?.pushMeta('diagramFont', font);
 	}
 
+	// Custom font management
+	addCustomFont(font: CustomFont) {
+		if (this.customFonts.some(f => f.label === font.label)) return;
+		this.customFonts = [...this.customFonts, font];
+		getCollab()?.pushMeta('customFonts', JSON.stringify(this.customFonts));
+	}
+
+	removeCustomFont(label: string) {
+		this.customFonts = this.customFonts.filter(f => f.label !== label);
+		// If current font was the removed one, fallback to default
+		if (this.diagramFont.includes(label)) {
+			this.setDiagramFont("'TH Sarabun PSK', 'Sarabun', sans-serif");
+		}
+		getCollab()?.pushMeta('customFonts', JSON.stringify(this.customFonts));
+	}
+
 	// Notation
-	setNotation(notation: NotationStyle) {
-		this.notation = notation;
-		getCollab()?.pushMeta('notation', notation);
+	setNotation(notation: NotationStyle, isRemote = false) {
+		// Broadcast intent immediately via awareness (so remote starts animation at same time)
+		if (!isRemote) {
+			const c = getCollab();
+			if (c && c.connected) {
+				c.broadcastNotation(notation);
+			}
+		}
+
+		// Phase 1: instantly hide all lines
+		this.notationRelPhase = 'hidden';
+		this.notationTransitioning = true;
+		this.notationMorphing = true;
+
+		// Phase 2: change notation, entity morph starts
+		setTimeout(() => {
+			this.notation = notation;
+			if (!isRemote) getCollab()?.pushMeta('notation', notation);
+			this.notationTransitioning = false;
+			this.notationAppearing = true;
+
+			// Phase 3: after entity morph, show Chen ovals
+			setTimeout(() => {
+				this.notationOvalsAppearing = true;
+			}, 450);
+
+			// Phase 4: lines draw AFTER entities settled
+			setTimeout(() => {
+				this.notationRelPhase = 'draw';
+			}, 650);
+
+			// Phase 5: cleanup
+			setTimeout(() => {
+				this.notationRelPhase = null;
+				this.notationAppearing = false;
+				this.notationMorphing = false;
+				this.notationOvalsAppearing = false;
+			}, 1500);
+		}, 500);
 	}
 
 	// Pan & Zoom
@@ -640,16 +868,21 @@ export class DiagramState {
 	// Animation state
 	animating = $state(false);
 	private _animationFrameId = 0;
+	private _safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 	cancelAnimation() {
 		if (this._animationFrameId) {
 			cancelAnimationFrame(this._animationFrameId);
 			this._animationFrameId = 0;
 		}
+		if (this._safetyTimer) {
+			clearTimeout(this._safetyTimer);
+			this._safetyTimer = null;
+		}
 		this.animating = false;
 	}
 
-	/** Compute target layout positions without applying them. Returns null if no entities. */
+	/** Compute target layout positions without applying them (fallback algorithm). Returns null if no entities. */
 	private computeLayoutPositions(): { positions: Map<string, Position>; timedOut: boolean } | null {
 		const n = this.entities.length;
 		if (n === 0) return null;
@@ -709,30 +942,18 @@ export class DiagramState {
 		}
 		components.sort((a, b) => b.length - a.length);
 
-		// Shuffle helper for variety on each press
-		function shuffle<T>(arr: T[]): T[] {
-			const a = [...arr];
-			for (let i = a.length - 1; i > 0; i--) {
-				const j = Math.floor(Math.random() * (i + 1));
-				[a[i], a[j]] = [a[j], a[i]];
-			}
-			return a;
-		}
-
 		const positions = new Map<string, { x: number; y: number }>();
-		// Gap between entities — Chen needs more room for oval clouds
+		// Adaptive gap: entity เยอะ = gap กว้างขึ้น
 		const isChen = this.notation === 'chen';
-		const GAP_X = isChen ? 100 : 100;
-		const GAP_Y = isChen ? 120 : 150;
+		const GAP_X = (isChen ? 100 : 100) + Math.max(0, n - 8) * 15;
+		const GAP_Y = (isChen ? 120 : 150) + Math.max(0, n - 8) * 10;
 		let componentOffsetY = 0;
 
 		for (const component of components) {
-			// Pick random root from most-connected
+			// Sort by degree descending, randomize among same-degree nodes for variation
 			const degrees = component.map((id) => ({ id, deg: adj.get(id)?.size ?? 0 }));
-			degrees.sort((a, b) => b.deg - a.deg);
-			const maxDeg = degrees[0].deg;
-			const topNodes = degrees.filter((d) => d.deg === maxDeg);
-			const rootId = topNodes[Math.floor(Math.random() * topNodes.length)].id;
+			degrees.sort((a, b) => b.deg - a.deg || Math.random() - 0.5);
+			const rootId = degrees[0].id;
 
 			// BFS to assign layers
 			const layers: string[][] = [];
@@ -761,9 +982,22 @@ export class DiagramState {
 				}
 			}
 
-			// Shuffle within each layer
+			// Sort within each layer by degree (high-degree nodes toward center), randomize ties
 			for (let i = 0; i < layers.length; i++) {
-				layers[i] = shuffle(layers[i]);
+				layers[i].sort((a, b) => (adj.get(b)?.size ?? 0) - (adj.get(a)?.size ?? 0) || Math.random() - 0.5);
+				// Interleave: place high-degree in center of layer
+				const sorted = [...layers[i]];
+				const reordered: string[] = new Array(sorted.length);
+				let left = Math.floor((sorted.length - 1) / 2);
+				let right = left + 1;
+				for (let j = 0; j < sorted.length; j++) {
+					if (j % 2 === 0) {
+						reordered[left--] = sorted[j];
+					} else {
+						reordered[right++] = sorted[j];
+					}
+				}
+				layers[i] = reordered;
 			}
 
 			// Position entities using space (includes oval room) for spacing
@@ -1048,17 +1282,52 @@ export class DiagramState {
 		return { positions: finalPositions, timedOut };
 	}
 
-	/** Animated auto-layout: entities slide to new positions. Returns timedOut flag. */
-	animateLayout(duration = 500): boolean {
-		if (this.diagramType === 'flowchart') { this.flowAutoLayout(); return false; }
-		if (this.diagramType === 'context') { this.dfdAutoLayout(); return false; }
+	private _layoutGen = 0;
+
+	/** Animated auto-layout: entities slide to new positions. */
+	animateLayout(duration = 300) {
+		if (this.diagramType === 'flowchart') { this.flowAutoLayout(); return; }
+		if (this.diagramType === 'context') { this.dfdAutoLayout(); return; }
 
 		this.cancelAnimation();
+		const gen = ++this._layoutGen;
 
+		// Snapshot current data (user might edit while ELK computes)
+		const entities = [...this.entities];
+		const relationships = [...this.relationships];
+		const notation = this.notation;
+		const estimateBox = (e: Entity) => this.estimateEntityBox(e);
+
+		// Always use ELK (cached after first load), BFS fallback on error
+		getElk()
+			.then(m => m.computeELKLayout(entities, relationships, notation, estimateBox))
+			.then(positions => {
+				if (gen !== this._layoutGen) return; // stale — user pressed again
+				if (positions && positions.size > 0) {
+					this._startAnimation(positions, duration);
+				} else {
+					this._startBFSAnimation(duration);
+				}
+			})
+			.catch(() => {
+				if (gen !== this._layoutGen) return;
+				this._startBFSAnimation(duration);
+			});
+	}
+
+	private _startBFSAnimation(duration: number) {
 		const result = this.computeLayoutPositions();
-		if (!result) return false;
+		if (!result) return;
+		this._startAnimation(result.positions, duration);
+	}
 
-		const { positions: targetPositions, timedOut } = result;
+	/** Public entry for remote layout animation (called from collab observer) */
+	applyRemoteLayout(targetPositions: Map<string, Position>) {
+		this._startAnimation(targetPositions, 0, true);
+	}
+
+	private _startAnimation(targetPositions: Map<string, Position>, _duration: number, isRemote = false) {
+		this.cancelAnimation();
 
 		// Save old positions
 		const oldPositions = new Map<string, Position>();
@@ -1077,52 +1346,138 @@ export class DiagramState {
 			}
 		}
 
+		// Broadcast layout intent to collaborators via awareness (instant P2P)
+		if (!isRemote) {
+			const c = getCollab();
+			if (c && c.connected) {
+				const positions: Record<string, { x: number; y: number }> = {};
+				for (const [id, pos] of targetPositions) {
+					positions[id] = { x: pos.x, y: pos.y };
+				}
+				c.broadcastLayout(positions);
+			}
+		}
+
+		// --- Magic Arrange: staggered elastic animation ---
+		const STAGGER_MAX = 200; // ms spread between first and last entity
+		const ENTITY_DUR = 600;  // ms per entity animation
+		const TOTAL_DUR = STAGGER_MAX + ENTITY_DUR;
+
+		// Elastic easing: overshoot then settle
+		const elasticOut = (t: number): number => {
+			if (t === 0 || t === 1) return t;
+			return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+		};
+
+		// Compute centroid of target positions
+		let cx = 0, cy = 0, count = 0;
+		for (const pos of targetPositions.values()) {
+			cx += pos.x; cy += pos.y; count++;
+		}
+		if (count > 0) { cx /= count; cy /= count; }
+
+		// Compute per-entity delay based on distance from centroid
+		const delays = new Map<string, number>();
+		let maxDist = 0;
+		for (const [id, pos] of targetPositions) {
+			const dist = Math.hypot(pos.x - cx, pos.y - cy);
+			if (dist > maxDist) maxDist = dist;
+			delays.set(id, dist);
+		}
+		// Normalize distances to delays (0..STAGGER_MAX)
+		for (const [id, dist] of delays) {
+			delays.set(id, maxDist > 0 ? (dist / maxDist) * STAGGER_MAX : 0);
+		}
+
 		this.animating = true;
 
+		// Hide relationship lines during flight
+		this.notationRelPhase = 'hidden';
+
+		// Safety: force cleanup after TOTAL_DUR + 500ms
+		this._safetyTimer = setTimeout(() => {
+			this.animating = false;
+			this.notationRelPhase = null;
+			this._animationFrameId = 0;
+			this._safetyTimer = null;
+		}, TOTAL_DUR + 500);
+
 		const startTime = performance.now();
-		const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
 		const animate = (now: number) => {
-			const elapsed = now - startTime;
-			const rawT = Math.min(elapsed / duration, 1);
-			const t = easeOutCubic(rawT);
+			try {
+				const elapsed = now - startTime;
 
-			for (const e of this.entities) {
-				const from = oldPositions.get(e.id);
-				const to = targetPositions.get(e.id);
-				if (from && to) {
+				let allDone = true;
+				for (const e of this.entities) {
+					const from = oldPositions.get(e.id);
+					const to = targetPositions.get(e.id);
+					if (!from || !to) continue;
+
+					const delay = delays.get(e.id) ?? 0;
+					const localT = Math.min(Math.max((elapsed - delay) / ENTITY_DUR, 0), 1);
+					const t = elasticOut(localT);
+
 					e.position = {
-						x: Math.round(from.x + (to.x - from.x) * t),
-						y: Math.round(from.y + (to.y - from.y) * t)
+						x: from.x + (to.x - from.x) * t,
+						y: from.y + (to.y - from.y) * t
 					};
-				}
-			}
 
-			if (rawT < 1) {
-				this._animationFrameId = requestAnimationFrame(animate);
-			} else {
-				// Animation complete
+					if (localT < 1) allDone = false;
+				}
+
+				if (!allDone) {
+					this._animationFrameId = requestAnimationFrame(animate);
+				} else {
+					// Snap to final integer positions
+					for (const e of this.entities) {
+						const to = targetPositions.get(e.id);
+						if (to) {
+							e.position = { x: Math.round(to.x), y: Math.round(to.y) };
+						}
+					}
+
+					if (this._safetyTimer) { clearTimeout(this._safetyTimer); this._safetyTimer = null; }
+					this._animationFrameId = 0;
+					this.animating = false;
+
+					// Draw relationship lines back in
+					this.notationRelPhase = 'draw';
+					setTimeout(() => { this.notationRelPhase = null; }, 600);
+
+					// Smooth camera fit to content
+					this.smoothTransition = true;
+					if (this.canvasWidth > 0 && this.canvasHeight > 0) {
+						this.fitToContent(this.canvasWidth, this.canvasHeight);
+					} else {
+						this.panX = 0;
+						this.panY = 0;
+						this.zoom = 1;
+					}
+					setTimeout(() => { this.smoothTransition = false; }, 300);
+
+					// Sync to collaborators once at end (only initiator pushes)
+					if (!isRemote) {
+						const c = getCollab();
+						if (c) {
+							for (const e of this.entities) c.pushEntityChange(e);
+						}
+					}
+				}
+			} catch {
+				if (this._safetyTimer) { clearTimeout(this._safetyTimer); this._safetyTimer = null; }
 				this._animationFrameId = 0;
 				this.animating = false;
-				this.panX = 0;
-				this.panY = 0;
-				this.zoom = 1;
-
-				// Sync to collaborators once at end
-				const c = getCollab();
-				if (c) {
-					for (const e of this.entities) c.pushEntityChange(e);
-				}
+				this.notationRelPhase = null;
 			}
 		};
 
 		this._animationFrameId = requestAnimationFrame(animate);
-		return timedOut;
 	}
 
-	// Auto-layout: dispatch by diagram type. Returns true if layout timed out.
-	autoLayout(): boolean {
-		return this.animateLayout();
+	// Auto-layout: dispatch by diagram type.
+	autoLayout() {
+		this.animateLayout();
 	}
 
 	// Selection
@@ -1194,10 +1549,43 @@ export class DiagramState {
 		this.showGrid = !this.showGrid;
 	}
 
+	toggleDataFlow() {
+		this.showDataFlow = !this.showDataFlow;
+		const c = getCollab();
+		if (c?.connected) c.broadcastDataFlow(this.showDataFlow);
+	}
+
 	restoreHistoryEntry(index: number) {
 		if (index < 0 || index >= this.history.length) return;
 		this.pushHistory('Restore');
 		this.restore(this.history[index]);
+	}
+
+	/** Preview a history entry without pushing to history (for timeline scrubbing) */
+	previewHistoryEntry(index: number) {
+		if (index < 0 || index >= this.history.length) return;
+		if (!this.timelinePreviewActive) {
+			// Save current state before first preview
+			this._previewSavedState = this.snapshot();
+			this.timelinePreviewActive = true;
+		}
+		this.restore(this.history[index]);
+	}
+
+	/** Exit preview mode. If commit=true, keep the previewed state and push to history. */
+	exitPreview(commit: boolean) {
+		if (!this.timelinePreviewActive) return;
+		if (!commit && this._previewSavedState) {
+			// Cancel — restore original state
+			this.restore(this._previewSavedState);
+		}
+		if (commit) {
+			this.pushHistory('Timeline restore');
+			// Sync to collaborators
+			getCollab()?.pushFullState();
+		}
+		this._previewSavedState = null;
+		this.timelinePreviewActive = false;
 	}
 
 	applyTranslation(mapping: {
@@ -1337,7 +1725,7 @@ export class DiagramState {
 		return node;
 	}
 
-	updateFlowNode(id: string, updates: Partial<Pick<FlowNode, 'name' | 'type' | 'color' | 'borderRadius'>>) {
+	updateFlowNode(id: string, updates: Partial<Pick<FlowNode, 'name' | 'type' | 'color' | 'borderRadius' | 'width' | 'height'>>) {
 		const node = this.flowNodes.find((n) => n.id === id);
 		if (!node) return;
 		this.pushHistory();
@@ -1345,6 +1733,8 @@ export class DiagramState {
 		if (updates.type !== undefined) node.type = updates.type;
 		if (updates.color !== undefined) node.color = updates.color;
 		if (updates.borderRadius !== undefined) node.borderRadius = updates.borderRadius;
+		if (updates.width !== undefined) node.width = updates.width;
+		if (updates.height !== undefined) node.height = updates.height;
 		getCollab()?.pushFlowNodeChange(node);
 	}
 
@@ -1367,7 +1757,20 @@ export class DiagramState {
 				position = { x: Math.round(position.x / 20) * 20, y: Math.round(position.y / 20) * 20 };
 			}
 			node.position = position;
-			getCollab()?.pushFlowNodeChange(node);
+			const c = getCollab();
+			if (c) {
+				if (!this._moveMultiDrag) {
+					c.pushFlowNodeChange(node);
+				} else {
+					this._movePendingIds.add('flow:' + id);
+					if (!this._moveThrottleTimer) {
+						this._moveThrottleTimer = setTimeout(() => {
+							this._moveThrottleTimer = null;
+							this._flushPendingMoves(c);
+						}, 100);
+					}
+				}
+			}
 		}
 	}
 
@@ -1380,12 +1783,17 @@ export class DiagramState {
 		return edge;
 	}
 
-	updateFlowEdge(id: string, updates: Partial<Pick<FlowEdge, 'label' | 'condition'>>) {
+	updateFlowEdge(id: string, updates: Partial<Pick<FlowEdge, 'label' | 'condition' | 'waypoints' | 'lineStyle' | 'strokeWidth' | 'strokeDash' | 'edgeColor'>>) {
 		const edge = this.flowEdges.find((e) => e.id === id);
 		if (!edge) return;
 		this.pushHistory();
 		if (updates.label !== undefined) edge.label = updates.label;
 		if (updates.condition !== undefined) edge.condition = updates.condition;
+		if (updates.waypoints !== undefined) edge.waypoints = updates.waypoints;
+		if (updates.lineStyle !== undefined) edge.lineStyle = updates.lineStyle;
+		if (updates.strokeWidth !== undefined) edge.strokeWidth = updates.strokeWidth;
+		if (updates.strokeDash !== undefined) edge.strokeDash = updates.strokeDash;
+		if (updates.edgeColor !== undefined) edge.edgeColor = updates.edgeColor;
 		getCollab()?.pushFlowEdgeChange(edge);
 	}
 
@@ -1394,6 +1802,33 @@ export class DiagramState {
 		this.flowEdges = this.flowEdges.filter((e) => e.id !== id);
 		if (this.selectedEdgeId === id) this.selectedEdgeId = null;
 		getCollab()?.pushFlowEdgeRemove(id);
+	}
+
+	applyFlowchartLayout(layoutType: 'hierarchical-tb' | 'hierarchical-lr' | 'grid' | 'circular' | 'force') {
+		if (this.flowNodes.length === 0) return;
+
+		this.pushHistory('Apply layout');
+
+		// Dynamic import to avoid increasing bundle size
+		import('$lib/utils/flowchart-layouts').then(({ applyLayout }) => {
+			const result = applyLayout(layoutType, this.flowNodes, this.flowEdges);
+
+			// Apply positions with smooth transition
+			this.smoothTransition = true;
+
+			for (const [nodeId, position] of result.positions) {
+				const node = this.flowNodes.find(n => n.id === nodeId);
+				if (node) {
+					node.position = position;
+					getCollab()?.pushFlowNodeChange(node);
+				}
+			}
+
+			// Reset transition after animation
+			setTimeout(() => {
+				this.smoothTransition = false;
+			}, 300);
+		});
 	}
 
 	// ─── Context Diagram (DFD) CRUD ───
@@ -1444,7 +1879,20 @@ export class DiagramState {
 				position = { x: Math.round(position.x / 20) * 20, y: Math.round(position.y / 20) * 20 };
 			}
 			node.position = position;
-			getCollab()?.pushDFDNodeChange(node);
+			const c = getCollab();
+			if (c) {
+				if (!this._moveMultiDrag) {
+					c.pushDFDNodeChange(node);
+				} else {
+					this._movePendingIds.add('dfd:' + id);
+					if (!this._moveThrottleTimer) {
+						this._moveThrottleTimer = setTimeout(() => {
+							this._moveThrottleTimer = null;
+							this._flushPendingMoves(c);
+						}, 100);
+					}
+				}
+			}
 		}
 	}
 
@@ -1623,9 +2071,13 @@ export class DiagramState {
 			}
 		}
 
-		this.panX = 0;
-		this.panY = 0;
-		this.zoom = 1;
+		if (this.canvasWidth > 0 && this.canvasHeight > 0) {
+			this.fitToContent(this.canvasWidth, this.canvasHeight);
+		} else {
+			this.panX = 0;
+			this.panY = 0;
+			this.zoom = 1;
+		}
 	}
 
 	// DFD auto-layout: radial (process center, externals around)
@@ -1692,9 +2144,222 @@ export class DiagramState {
 			c?.pushDFDNodeChange(node);
 		}
 
-		this.panX = 0;
-		this.panY = 0;
-		this.zoom = 1;
+		if (this.canvasWidth > 0 && this.canvasHeight > 0) {
+			this.fitToContent(this.canvasWidth, this.canvasHeight);
+		} else {
+			this.panX = 0;
+			this.panY = 0;
+			this.zoom = 1;
+		}
+	}
+
+	// ─── Physics Simulation ───
+	physicsMode = $state(false);
+	private _physicsFrameId = 0;
+	private _physicsSim: PhysicsSimulation | null = null;
+
+	async togglePhysics() {
+		if (this.physicsMode) {
+			this.stopPhysics();
+		} else {
+			// Request permission in collab mode with multiple users
+			const c = getCollab();
+			if (c?.connected && c.users.length > 1) {
+				const granted = await c.requestPermission('physics');
+				if (!granted) return;
+			}
+			this.startPhysics();
+		}
+	}
+
+	startPhysics() {
+		this.physicsMode = true;
+		this._physicsSim = new PhysicsSimulation();
+
+		// Add all current nodes as bodies
+		if (this.diagramType === 'er') {
+			for (const e of this.entities) {
+				this._physicsSim.addBody(e.id, e.position.x, e.position.y);
+			}
+			// Add springs from relationships
+			this._physicsSim.setSprings(
+				this.relationships.map(r => ({
+					fromId: r.entityIds[0],
+					toId: r.entityIds[1],
+					restLength: 200
+				}))
+			);
+		} else if (this.diagramType === 'flowchart') {
+			for (const n of this.flowNodes) {
+				this._physicsSim.addBody(n.id, n.position.x, n.position.y);
+			}
+			this._physicsSim.setSprings(
+				this.flowEdges.map(e => ({
+					fromId: e.fromNodeId,
+					toId: e.toNodeId,
+					restLength: 200
+				}))
+			);
+		} else if (this.diagramType === 'context') {
+			for (const n of this.dfdNodes) {
+				this._physicsSim.addBody(n.id, n.position.x, n.position.y);
+			}
+			this._physicsSim.setSprings(
+				this.dfdFlows.map(f => ({
+					fromId: f.fromNodeId,
+					toId: f.toNodeId,
+					restLength: 200
+				}))
+			);
+		}
+
+		this._physicsLoop();
+	}
+
+	stopPhysics() {
+		this.physicsMode = false;
+		if (this._physicsFrameId) {
+			cancelAnimationFrame(this._physicsFrameId);
+			this._physicsFrameId = 0;
+		}
+		// Save final positions to history
+		this.pushHistory('Physics layout');
+		// Sync to collab
+		const c = getCollab();
+		if (c) {
+			// Broadcast stop so remote users see simulation ended
+			c.broadcastPhysicsStop();
+			// Push final positions via Y.Doc
+			if (this.diagramType === 'er') {
+				for (const e of this.entities) c.pushEntityChange(e);
+			} else if (this.diagramType === 'flowchart') {
+				for (const n of this.flowNodes) c.pushFlowNodeChange(n);
+			} else if (this.diagramType === 'context') {
+				for (const n of this.dfdNodes) c.pushDFDNodeChange(n);
+			}
+		}
+		this._physicsSim = null;
+	}
+
+	physicsPin(id: string) {
+		this._physicsSim?.pin(id);
+	}
+
+	physicsUnpin(id: string) {
+		this._physicsSim?.unpin(id);
+	}
+
+	physicsMoveBody(id: string, x: number, y: number) {
+		this._physicsSim?.moveBody(id, x, y);
+	}
+
+	/** Sync physics sim when entities/relationships change */
+	physicsSyncBodies() {
+		if (!this._physicsSim || !this.physicsMode) return;
+		const sim = this._physicsSim;
+
+		if (this.diagramType === 'er') {
+			const currentIds = new Set(this.entities.map(e => e.id));
+			// Add new bodies
+			for (const e of this.entities) {
+				if (!sim.bodies.has(e.id)) {
+					sim.addBody(e.id, e.position.x, e.position.y);
+				}
+			}
+			// Remove old bodies
+			for (const id of sim.bodies.keys()) {
+				if (!currentIds.has(id)) sim.removeBody(id);
+			}
+			// Update springs
+			sim.setSprings(
+				this.relationships.map(r => ({
+					fromId: r.entityIds[0],
+					toId: r.entityIds[1],
+					restLength: 200
+				}))
+			);
+		} else if (this.diagramType === 'flowchart') {
+			const currentIds = new Set(this.flowNodes.map(n => n.id));
+			for (const n of this.flowNodes) {
+				if (!sim.bodies.has(n.id)) sim.addBody(n.id, n.position.x, n.position.y);
+			}
+			for (const id of sim.bodies.keys()) {
+				if (!currentIds.has(id)) sim.removeBody(id);
+			}
+			sim.setSprings(
+				this.flowEdges.map(e => ({
+					fromId: e.fromNodeId,
+					toId: e.toNodeId,
+					restLength: 200
+				}))
+			);
+		} else if (this.diagramType === 'context') {
+			const currentIds = new Set(this.dfdNodes.map(n => n.id));
+			for (const n of this.dfdNodes) {
+				if (!sim.bodies.has(n.id)) sim.addBody(n.id, n.position.x, n.position.y);
+			}
+			for (const id of sim.bodies.keys()) {
+				if (!currentIds.has(id)) sim.removeBody(id);
+			}
+			sim.setSprings(
+				this.dfdFlows.map(f => ({
+					fromId: f.fromNodeId,
+					toId: f.toNodeId,
+					restLength: 200
+				}))
+			);
+		}
+	}
+
+	private _physicsFrameCount = 0;
+
+	private _physicsLoop() {
+		if (!this.physicsMode || !this._physicsSim) return;
+		const sim = this._physicsSim;
+		sim.step();
+		const positions = sim.getPositions();
+
+		// Apply positions directly (skip history)
+		if (this.diagramType === 'er') {
+			for (const e of this.entities) {
+				const pos = positions.get(e.id);
+				if (pos) {
+					e.position = { x: pos.x, y: pos.y };
+				}
+			}
+		} else if (this.diagramType === 'flowchart') {
+			for (const n of this.flowNodes) {
+				const pos = positions.get(n.id);
+				if (pos) {
+					n.position = { x: pos.x, y: pos.y };
+				}
+			}
+		} else if (this.diagramType === 'context') {
+			for (const n of this.dfdNodes) {
+				const pos = positions.get(n.id);
+				if (pos) {
+					n.position = { x: pos.x, y: pos.y };
+				}
+			}
+		}
+
+		// Broadcast positions to collab every 3 frames (~50ms at 60fps)
+		this._physicsFrameCount++;
+		if (this._physicsFrameCount % 3 === 0) {
+			const c = getCollab();
+			if (c?.connected) {
+				const posObj: Record<string, { x: number; y: number }> = {};
+				for (const [id, pos] of positions) {
+					posObj[id] = { x: Math.round(pos.x), y: Math.round(pos.y) };
+				}
+				c.broadcastPhysicsPositions(posObj);
+			}
+		}
+
+		// Always request next frame while physics mode is on
+		if (this.physicsMode) {
+			this._physicsFrameId = requestAnimationFrame(() => this._physicsLoop());
+		}
 	}
 
 	resetAll() {
@@ -1708,6 +2373,7 @@ export class DiagramState {
 		this.dfdNodes = [];
 		this.dfdFlows = [];
 		this.diagramFont = "'TH Sarabun PSK', 'Sarabun', sans-serif";
+		this.customFonts = [];
 		this.panX = 0;
 		this.panY = 0;
 		this.zoom = 1;

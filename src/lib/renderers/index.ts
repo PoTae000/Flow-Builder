@@ -8,6 +8,7 @@ import { IDEF1XRenderer } from './idef1x.ts';
 import { BachmanRenderer } from './bachman.ts';
 import { BarkerRenderer } from './barker.ts';
 import { ArrowRenderer } from './arrow.ts';
+import { MeriseRenderer } from './merise.ts';
 
 const renderers: Record<NotationStyle, NotationRenderer> = {
 	'crows-foot': new CrowsFootRenderer(),
@@ -17,7 +18,8 @@ const renderers: Record<NotationStyle, NotationRenderer> = {
 	'idef1x': new IDEF1XRenderer(),
 	'bachman': new BachmanRenderer(),
 	'barker': new BarkerRenderer(),
-	'arrow': new ArrowRenderer()
+	'arrow': new ArrowRenderer(),
+	'merise': new MeriseRenderer()
 };
 
 export function getRenderer(notation: NotationStyle): NotationRenderer {

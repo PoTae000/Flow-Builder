@@ -44,32 +44,75 @@
 			: ''
 	);
 
-	// Build steps: entities first, then relationships
+	// Build steps based on diagram type
 	const steps = $derived.by(() => {
 		const s: { type: 'entity' | 'relationship'; id: string; label: string; description: string }[] = [];
 
-		for (const e of diagram.entities) {
-			const attrs = e.attributes.map((a) => {
-				const badge = a.type === 'primary_key' ? 'PK ' : a.type === 'foreign_key' ? 'FK ' : '';
-				return `${badge}${a.name}`;
-			}).join(', ');
-			s.push({
-				type: 'entity',
-				id: e.id,
-				label: e.name,
-				description: attrs || 'ไม่มี attribute'
-			});
-		}
+		if (diagram.diagramType === 'er') {
+			for (const e of diagram.entities) {
+				const attrs = e.attributes.map((a) => {
+					const badge = a.type === 'primary_key' ? 'PK ' : a.type === 'foreign_key' ? 'FK ' : '';
+					return `${badge}${a.name}`;
+				}).join(', ');
+				s.push({
+					type: 'entity',
+					id: e.id,
+					label: e.name,
+					description: attrs || 'ไม่มี attribute'
+				});
+			}
 
-		for (const r of diagram.relationships) {
-			const from = diagram.entityMap.get(r.entityIds[0])?.name || '?';
-			const to = diagram.entityMap.get(r.entityIds[1])?.name || '?';
-			s.push({
-				type: 'relationship',
-				id: r.id,
-				label: r.name,
-				description: `${from} [${r.cardinalities[0]}] — [${r.cardinalities[1]}] ${to}`
-			});
+			for (const r of diagram.relationships) {
+				const from = diagram.entityMap.get(r.entityIds[0])?.name || '?';
+				const to = diagram.entityMap.get(r.entityIds[1])?.name || '?';
+				s.push({
+					type: 'relationship',
+					id: r.id,
+					label: r.name,
+					description: `${from} [${r.cardinalities[0]}] — [${r.cardinalities[1]}] ${to}`
+				});
+			}
+		} else if (diagram.diagramType === 'flowchart') {
+			for (const node of diagram.flowNodes) {
+				s.push({
+					type: 'entity',
+					id: node.id,
+					label: node.name,
+					description: `Type: ${node.type}`
+				});
+			}
+
+			for (const edge of diagram.flowEdges) {
+				const from = diagram.flowNodes.find(n => n.id === edge.fromNodeId)?.name || '?';
+				const to = diagram.flowNodes.find(n => n.id === edge.toNodeId)?.name || '?';
+				const cond = edge.condition ? ` (${edge.condition})` : '';
+				s.push({
+					type: 'relationship',
+					id: edge.id,
+					label: edge.label || 'Edge',
+					description: `${from} → ${to}${cond}`
+				});
+			}
+		} else if (diagram.diagramType === 'context') {
+			for (const node of diagram.dfdNodes) {
+				s.push({
+					type: 'entity',
+					id: node.id,
+					label: node.name,
+					description: `Type: ${node.type}`
+				});
+			}
+
+			for (const flow of diagram.dfdFlows) {
+				const from = diagram.dfdNodes.find(n => n.id === flow.fromNodeId)?.name || '?';
+				const to = diagram.dfdNodes.find(n => n.id === flow.toNodeId)?.name || '?';
+				s.push({
+					type: 'relationship',
+					id: flow.id,
+					label: flow.label,
+					description: `${from} → ${to}`
+				});
+			}
 		}
 
 		return s;
@@ -99,23 +142,64 @@
 
 		let rx: number, ry: number, rw: number, rh: number;
 
-		if (step.type === 'entity') {
-			const entity = diagram.entities.find(e => e.id === step.id);
-			if (!entity) return;
-			const box = diagram.estimateEntityBox(entity);
-			rx = entity.position.x; ry = entity.position.y; rw = box.w; rh = box.h;
+		if (diagram.diagramType === 'er') {
+			if (step.type === 'entity') {
+				const entity = diagram.entities.find(e => e.id === step.id);
+				if (!entity) return;
+				const box = diagram.estimateEntityBox(entity);
+				rx = entity.position.x; ry = entity.position.y; rw = box.w; rh = box.h;
+			} else {
+				const rel = diagram.relationships.find(r => r.id === step.id);
+				if (!rel) return;
+				const e1 = diagram.entities.find(e => e.id === rel.entityIds[0]);
+				const e2 = diagram.entities.find(e => e.id === rel.entityIds[1]);
+				if (!e1 || !e2) return;
+				const b1 = diagram.estimateEntityBox(e1);
+				const b2 = diagram.estimateEntityBox(e2);
+				rx = Math.min(e1.position.x, e2.position.x);
+				ry = Math.min(e1.position.y, e2.position.y);
+				rw = Math.max(e1.position.x + b1.w, e2.position.x + b2.w) - rx;
+				rh = Math.max(e1.position.y + b1.h, e2.position.y + b2.h) - ry;
+			}
+		} else if (diagram.diagramType === 'flowchart') {
+			if (step.type === 'entity') {
+				const node = diagram.flowNodes.find(n => n.id === step.id);
+				if (!node) return;
+				const W = node.width || 140;
+				const H = node.height || 60;
+				rx = node.position.x - W / 2; ry = node.position.y - H / 2; rw = W; rh = H;
+			} else {
+				const edge = diagram.flowEdges.find(e => e.id === step.id);
+				if (!edge) return;
+				const n1 = diagram.flowNodes.find(n => n.id === edge.fromNodeId);
+				const n2 = diagram.flowNodes.find(n => n.id === edge.toNodeId);
+				if (!n1 || !n2) return;
+				const W1 = n1.width || 140, H1 = n1.height || 60;
+				const W2 = n2.width || 140, H2 = n2.height || 60;
+				rx = Math.min(n1.position.x - W1 / 2, n2.position.x - W2 / 2);
+				ry = Math.min(n1.position.y - H1 / 2, n2.position.y - H2 / 2);
+				rw = Math.max(n1.position.x + W1 / 2, n2.position.x + W2 / 2) - rx;
+				rh = Math.max(n1.position.y + H1 / 2, n2.position.y + H2 / 2) - ry;
+			}
 		} else {
-			const rel = diagram.relationships.find(r => r.id === step.id);
-			if (!rel) return;
-			const e1 = diagram.entities.find(e => e.id === rel.entityIds[0]);
-			const e2 = diagram.entities.find(e => e.id === rel.entityIds[1]);
-			if (!e1 || !e2) return;
-			const b1 = diagram.estimateEntityBox(e1);
-			const b2 = diagram.estimateEntityBox(e2);
-			rx = Math.min(e1.position.x, e2.position.x);
-			ry = Math.min(e1.position.y, e2.position.y);
-			rw = Math.max(e1.position.x + b1.w, e2.position.x + b2.w) - rx;
-			rh = Math.max(e1.position.y + b1.h, e2.position.y + b2.h) - ry;
+			// context diagram
+			if (step.type === 'entity') {
+				const node = diagram.dfdNodes.find(n => n.id === step.id);
+				if (!node) return;
+				const W = node.type === 'external-entity' ? 80 : node.type === 'data-store' ? 140 : 120;
+				const H = node.type === 'external-entity' ? 80 : node.type === 'data-store' ? 40 : 50;
+				rx = node.position.x - W / 2; ry = node.position.y - H / 2; rw = W; rh = H;
+			} else {
+				const flow = diagram.dfdFlows.find(f => f.id === step.id);
+				if (!flow) return;
+				const n1 = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
+				const n2 = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
+				if (!n1 || !n2) return;
+				rx = Math.min(n1.position.x, n2.position.x) - 100;
+				ry = Math.min(n1.position.y, n2.position.y) - 100;
+				rw = Math.abs(n2.position.x - n1.position.x) + 200;
+				rh = Math.abs(n2.position.y - n1.position.y) + 200;
+			}
 		}
 
 		// Cap zoom at 1.0 so presentation never zooms in beyond 100%
@@ -149,13 +233,33 @@
 			if (step.type === 'entity') visEntities.add(step.id);
 			else visRels.add(step.id);
 		}
-		// For relationships: only show if BOTH connected entities are visible
-		for (const relId of visRels) {
-			const rel = diagram.relationships.find((r) => r.id === relId);
-			if (rel && (!visEntities.has(rel.entityIds[0]) || !visEntities.has(rel.entityIds[1]))) {
-				visRels.delete(relId);
+
+		if (diagram.diagramType === 'er') {
+			// For relationships: only show if BOTH connected entities are visible
+			for (const relId of visRels) {
+				const rel = diagram.relationships.find((r) => r.id === relId);
+				if (rel && (!visEntities.has(rel.entityIds[0]) || !visEntities.has(rel.entityIds[1]))) {
+					visRels.delete(relId);
+				}
+			}
+		} else if (diagram.diagramType === 'flowchart') {
+			// For edges: only show if BOTH connected nodes are visible
+			for (const edgeId of visRels) {
+				const edge = diagram.flowEdges.find((e) => e.id === edgeId);
+				if (edge && (!visEntities.has(edge.fromNodeId) || !visEntities.has(edge.toNodeId))) {
+					visRels.delete(edgeId);
+				}
+			}
+		} else if (diagram.diagramType === 'context') {
+			// For flows: only show if BOTH connected nodes are visible
+			for (const flowId of visRels) {
+				const flow = diagram.dfdFlows.find((f) => f.id === flowId);
+				if (flow && (!visEntities.has(flow.fromNodeId) || !visEntities.has(flow.toNodeId))) {
+					visRels.delete(flowId);
+				}
 			}
 		}
+
 		presentation.setVisible(visEntities, visRels);
 	});
 

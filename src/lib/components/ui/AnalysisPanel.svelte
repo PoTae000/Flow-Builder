@@ -55,6 +55,7 @@
 	}
 
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { suggestions } from '$lib/stores/suggestions.svelte';
 	import {
 		convertAiDataToDiagram,
 		convertAiFlowchartToDiagram,
@@ -86,6 +87,7 @@
 		errorMsg = '';
 		result = null;
 		cancelled = false;
+		suggestions.suppressAutoFetch();
 		startLoadingMessages();
 		abortController = new AbortController();
 
@@ -157,6 +159,7 @@
 		if (!result || fixing) return;
 		fixing = true;
 		errorMsg = '';
+		suggestions.suppressAutoFetch();
 		abortController = new AbortController();
 
 		const timeout = setTimeout(() => abortController?.abort(), 30000);
@@ -232,6 +235,9 @@
 			}
 
 			diagram.autoLayout();
+
+			// Suppress auto-suggestions before re-analyze to avoid 429
+			suggestions.suppressAutoFetch();
 
 			// Re-analyze to show new result
 			await analyze();
