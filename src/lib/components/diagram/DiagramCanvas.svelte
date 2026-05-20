@@ -332,6 +332,15 @@
 		startY: number;
 	} | null>(null);
 
+	// Pending DFD line drag — mousedown recorded, waiting for movement threshold
+	let pendingDFDLineDrag = $state<{
+		flowId: string;
+		startX: number;
+		startY: number;
+		screenX: number;
+		screenY: number;
+	} | null>(null);
+
 	// Alignment guides
 	let alignmentGuides = $state<{
 		vertical: number[];
@@ -1239,11 +1248,34 @@
 		}
 	}
 
-	function handleDFDLineDrag(flowId: string, e: MouseEvent) {
+	function handleDFDLineMouseDown(flowId: string, e: MouseEvent) {
 		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 
-		// Select the flow first
+		// Select the flow
 		diagram.selectRelationship(flowId);
+
+		// Record pending drag — don't create waypoint yet, wait for movement threshold
+		const svgPos = getSVGPoint(e);
+		pendingDFDLineDrag = {
+			flowId,
+			startX: svgPos.x,
+			startY: svgPos.y,
+			screenX: e.clientX,
+			screenY: e.clientY
+		};
+	}
+
+	const DFD_DRAG_THRESHOLD = 4; // px screen distance before creating waypoint
+
+	function promotePendingDFDLineDrag(e: MouseEvent) {
+		if (!pendingDFDLineDrag) return;
+
+		const dx = e.clientX - pendingDFDLineDrag.screenX;
+		const dy = e.clientY - pendingDFDLineDrag.screenY;
+		if (dx * dx + dy * dy < DFD_DRAG_THRESHOLD * DFD_DRAG_THRESHOLD) return;
+
+		const { flowId, startX, startY } = pendingDFDLineDrag;
+		pendingDFDLineDrag = null;
 
 		const flow = diagram.dfdFlows.find(f => f.id === flowId);
 		if (!flow) return;
@@ -1251,45 +1283,38 @@
 		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
 		if (!fromNode || !toNode) return;
 
-		const svgPos = getSVGPoint(e);
 		const route = getDFDFlowRoute(flow, fromNode, toNode);
 		if (route.length < 2) return;
 
-		// Find nearest segment
+		// Find nearest segment to the original mousedown position
 		let bestDist = Infinity;
 		let bestSegIndex = 0;
 		for (let i = 0; i < route.length - 1; i++) {
 			const a = route[i], b = route[i + 1];
 			const abx = b.x - a.x, aby = b.y - a.y;
 			const len2 = abx * abx + aby * aby;
-			let t = len2 > 0 ? ((svgPos.x - a.x) * abx + (svgPos.y - a.y) * aby) / len2 : 0;
+			let t = len2 > 0 ? ((startX - a.x) * abx + (startY - a.y) * aby) / len2 : 0;
 			t = Math.max(0, Math.min(1, t));
 			const px = a.x + t * abx, py = a.y + t * aby;
-			const dist = (svgPos.x - px) ** 2 + (svgPos.y - py) ** 2;
+			const dist = (startX - px) ** 2 + (startY - py) ** 2;
 			if (dist < bestDist) { bestDist = dist; bestSegIndex = i; }
 		}
 
-		// Insert waypoint at click position
+		// Insert waypoint at current mouse position (not start — feels more natural)
+		const svgPos = getSVGPoint(e);
 		const waypoints = [...(flow.waypoints || [])];
 		const newPoint = {
 			x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
 			y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
 		};
 
-		// bestSegIndex in route maps to waypoint array index: route[0]=fromPort, route[1..n-2]=waypoints, route[n-1]=toPort
-		// So segment i connects route[i] to route[i+1]. Waypoint insertion index = bestSegIndex (0-based in waypoints array)
-		// For segment 0 (fromPort->first): insert at waypoints[0]
-		// For segment k: insert at waypoints[k] (shifts existing waypoints right)
-		const waypointInsertIndex = bestSegIndex;
-		waypoints.splice(waypointInsertIndex, 0, newPoint);
-
+		waypoints.splice(bestSegIndex, 0, newPoint);
 		diagram.updateDFDFlow(flow.id, { waypoints });
 
-		// Immediately start dragging the new waypoint
-		// In route coordinates, the new waypoint is at index waypointInsertIndex+1 (route index = waypointArrayIndex+1)
+		// Start dragging the new waypoint (route index = bestSegIndex + 1)
 		draggingDFDWaypoint = {
 			flowId,
-			waypointIndex: waypointInsertIndex + 1,
+			waypointIndex: bestSegIndex + 1,
 			startX: svgPos.x,
 			startY: svgPos.y
 		};
@@ -1539,6 +1564,8 @@
 				handleWaypointDrag(e);
 			} else if (draggingDFDWaypoint) {
 				handleDFDWaypointDrag(e);
+			} else if (pendingDFDLineDrag) {
+				promotePendingDFDLineDrag(e);
 			}
 		});
 	}
@@ -1587,6 +1614,8 @@
 				diagram.pushHistory('Move DFD waypoint');
 				draggingDFDWaypoint = null;
 			}
+			// Clear pending DFD line drag (was just a click, not a drag)
+			pendingDFDLineDrag = null;
 			// Physics: unpin dragged entities
 			if (diagram.physicsMode && dragging) {
 				for (const id of dragging.offsets.keys()) {
@@ -2166,7 +2195,7 @@
 						animateIn={diagram.newDFDFlowIds.has(flow.id)}
 						dying={diagram.dyingDFDFlowIds.has(flow.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
-						onlinemousedown={(e) => handleDFDLineDrag(flow.id, e)}
+						onlinemousedown={(e) => handleDFDLineMouseDown(flow.id, e)}
 					/>
 
 					<!-- Waypoint handles for selected DFD flow -->
