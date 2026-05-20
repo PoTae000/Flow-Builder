@@ -116,7 +116,7 @@
 		return offsets;
 	});
 
-	// Helper: compute DFD flow route (shared between rendering & particle paths)
+	// Helper: compute DFD flow route (mirrors DFDFlowLine logic)
 	function getDFDNodeRect(node: DFDNode): { x: number; y: number; w: number; h: number } {
 		const cx = node.position.x, cy = node.position.y;
 		if (node.type === 'process') {
@@ -129,93 +129,80 @@
 		}
 	}
 
-	function getDFDPortToward(node: DFDNode, target: { x: number; y: number }): { x: number; y: number } {
-		const rect = getDFDNodeRect(node);
-		const cx = node.position.x, cy = node.position.y;
-		const dx = target.x - cx, dy = target.y - cy;
-
-		if (node.type === 'data-store') {
-			const portX = Math.max(rect.x + 8, Math.min(rect.x + rect.w - 8, target.x));
-			return dy >= 0 ? { x: portX, y: rect.y + rect.h } : { x: portX, y: rect.y };
-		}
-
-		if (Math.abs(dx) > Math.abs(dy)) {
-			const portY = Math.max(rect.y + 8, Math.min(rect.y + rect.h - 8, target.y));
-			return dx > 0 ? { x: rect.x + rect.w, y: portY } : { x: rect.x, y: portY };
-		} else {
-			const portX = Math.max(rect.x + 8, Math.min(rect.x + rect.w - 8, target.x));
-			return dy > 0 ? { x: portX, y: rect.y + rect.h } : { x: portX, y: rect.y };
+	type DFDDir = 'top' | 'bottom' | 'left' | 'right';
+	function dfdNaturalDir(fx: number, fy: number, tx: number, ty: number, nodeType: string): DFDDir {
+		const dx = tx - fx, dy = ty - fy;
+		if (nodeType === 'data-store') return dy >= 0 ? 'bottom' : 'top';
+		if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+		return dy > 0 ? 'bottom' : 'top';
+	}
+	function dfdGetPort(dir: DFDDir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number) {
+		switch (dir) {
+			case 'right': return { x: rect.x + rect.w, y: cy };
+			case 'left': return { x: rect.x, y: cy };
+			case 'bottom': return { x: cx, y: rect.y + rect.h };
+			case 'top': return { x: cx, y: rect.y };
 		}
 	}
 
-	function getDFDAutoRoute(fromNode: DFDNode, toNode: DFDNode): { x: number; y: number }[] {
+	function getDFDFlowRoute(flow: DFDFlow, fromNode: DFDNode, toNode: DFDNode): { x: number; y: number }[] {
 		const fromRect = getDFDNodeRect(fromNode);
 		const toRect = getDFDNodeRect(toNode);
 		const fcx = fromNode.position.x, fcy = fromNode.position.y;
 		const tcx = toNode.position.x, tcy = toNode.position.y;
 
-		type Dir = 'top' | 'bottom' | 'left' | 'right';
-		function naturalDir(fx: number, fy: number, tx: number, ty: number, nodeType: string): Dir {
-			const dx = tx - fx, dy = ty - fy;
-			if (nodeType === 'data-store') return dy >= 0 ? 'bottom' : 'top';
-			if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
-			return dy > 0 ? 'bottom' : 'top';
-		}
-		function getPort(dir: Dir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number) {
-			switch (dir) {
-				case 'right': return { x: rect.x + rect.w, y: cy };
-				case 'left': return { x: rect.x, y: cy };
-				case 'bottom': return { x: cx, y: rect.y + rect.h };
-				case 'top': return { x: cx, y: rect.y };
-			}
-		}
-
-		const fromDir = naturalDir(fcx, fcy, tcx, tcy, fromNode.type);
-		const toDir = naturalDir(tcx, tcy, fcx, fcy, toNode.type);
-		const p1 = getPort(fromDir, fromRect, fcx, fcy);
-		const p4 = getPort(toDir, toRect, tcx, tcy);
+		const fromDir = dfdNaturalDir(fcx, fcy, tcx, tcy, fromNode.type);
+		const toDir = dfdNaturalDir(tcx, tcy, fcx, fcy, toNode.type);
+		const p1 = dfdGetPort(fromDir, fromRect, fcx, fcy);
+		const p4 = dfdGetPort(toDir, toRect, tcx, tcy);
 
 		const sH = fromDir === 'left' || fromDir === 'right';
 		const eH = toDir === 'left' || toDir === 'right';
+		const wp = flow.waypoints?.[0];
+
 		let p2: { x: number; y: number }, p3: { x: number; y: number };
 
-		if (sH && eH) {
-			const midX = (p1.x + p4.x) / 2;
-			p2 = { x: midX, y: p1.y }; p3 = { x: midX, y: p4.y };
-		} else if (!sH && !eH) {
-			const midY = (p1.y + p4.y) / 2;
-			p2 = { x: p1.x, y: midY }; p3 = { x: p4.x, y: midY };
-		} else if (sH && !eH) {
-			p2 = { x: p4.x, y: p1.y }; p3 = p2;
+		if (wp) {
+			// User-controlled middle segment
+			if (sH) {
+				p2 = { x: wp.x, y: p1.y }; p3 = { x: wp.x, y: p4.y };
+			} else {
+				p2 = { x: p1.x, y: wp.y }; p3 = { x: p4.x, y: wp.y };
+			}
 		} else {
-			p2 = { x: p1.x, y: p4.y }; p3 = p2;
-		}
+			// Auto-route
+			if (sH && eH) {
+				const midX = (p1.x + p4.x) / 2;
+				p2 = { x: midX, y: p1.y }; p3 = { x: midX, y: p4.y };
+			} else if (!sH && !eH) {
+				const midY = (p1.y + p4.y) / 2;
+				p2 = { x: p1.x, y: midY }; p3 = { x: p4.x, y: midY };
+			} else if (sH && !eH) {
+				p2 = { x: p4.x, y: p1.y }; p3 = p2;
+			} else {
+				p2 = { x: p1.x, y: p4.y }; p3 = p2;
+			}
 
-		const GAP = 30;
-		if ((fromDir === 'top' && toDir === 'top') || (fromDir === 'bottom' && toDir === 'bottom')) {
-			const routeY = fromDir === 'top'
-				? Math.min(fromRect.y, toRect.y) - GAP
-				: Math.max(fromRect.y + fromRect.h, toRect.y + toRect.h) + GAP;
-			p2 = { x: p1.x, y: routeY }; p3 = { x: p4.x, y: routeY };
-		} else if ((fromDir === 'left' && toDir === 'left') || (fromDir === 'right' && toDir === 'right')) {
-			const routeX = fromDir === 'left'
-				? Math.min(fromRect.x, toRect.x) - GAP
-				: Math.max(fromRect.x + fromRect.w, toRect.x + toRect.w) + GAP;
-			p2 = { x: routeX, y: p1.y }; p3 = { x: routeX, y: p4.y };
+			const GAP = 30;
+			if ((fromDir === 'top' && toDir === 'top') || (fromDir === 'bottom' && toDir === 'bottom')) {
+				const routeY = fromDir === 'top'
+					? Math.min(fromRect.y, toRect.y) - GAP
+					: Math.max(fromRect.y + fromRect.h, toRect.y + toRect.h) + GAP;
+				p2 = { x: p1.x, y: routeY }; p3 = { x: p4.x, y: routeY };
+			} else if ((fromDir === 'left' && toDir === 'left') || (fromDir === 'right' && toDir === 'right')) {
+				const routeX = fromDir === 'left'
+					? Math.min(fromRect.x, toRect.x) - GAP
+					: Math.max(fromRect.x + fromRect.w, toRect.x + toRect.w) + GAP;
+				p2 = { x: routeX, y: p1.y }; p3 = { x: routeX, y: p4.y };
+			}
 		}
 
 		return [p1, p2, p3, p4];
 	}
 
-	function getDFDFlowRoute(flow: DFDFlow, fromNode: DFDNode, toNode: DFDNode): { x: number; y: number }[] {
-		if (flow.waypoints && flow.waypoints.length > 0) {
-			const firstWp = flow.waypoints[0];
-			const lastWp = flow.waypoints[flow.waypoints.length - 1];
-			const fromPort = getDFDPortToward(fromNode, firstWp);
-			const toPort = getDFDPortToward(toNode, lastWp);
-			return [fromPort, ...flow.waypoints, toPort];
-		}
-		return getDFDAutoRoute(fromNode, toNode);
+	function getDFDFromExitIsHorizontal(fromNode: DFDNode, toNode: DFDNode): boolean {
+		const fromDir = dfdNaturalDir(fromNode.position.x, fromNode.position.y, toNode.position.x, toNode.position.y, fromNode.type);
+		return fromDir === 'left' || fromDir === 'right';
 	}
 
 	// A4: Responsive empty state
@@ -324,19 +311,15 @@
 		startY: number;
 	} | null>(null);
 
-	// DFD waypoint dragging state
-	let draggingDFDWaypoint = $state<{
+	// DFD segment dragging (draw.io style)
+	let draggingDFDSegment = $state<{
 		flowId: string;
-		waypointIndex: number;
-		startX: number;
-		startY: number;
+		constraint: 'x' | 'y'; // 'x' = vertical segment, drag changes x; 'y' = horizontal segment, drag changes y
 	} | null>(null);
 
 	// Pending DFD line drag — mousedown recorded, waiting for movement threshold
 	let pendingDFDLineDrag = $state<{
 		flowId: string;
-		startX: number;
-		startY: number;
 		screenX: number;
 		screenY: number;
 	} | null>(null);
@@ -1215,66 +1198,22 @@
 		diagram.pushHistory('Remove waypoint');
 	}
 
-	// DFD waypoint handlers
-	function handleDFDWaypointDragStart(flowId: string, index: number, e: MouseEvent) {
-		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
-		const svgPos = getSVGPoint(e);
-		draggingDFDWaypoint = {
-			flowId,
-			waypointIndex: index,
-			startX: svgPos.x,
-			startY: svgPos.y
-		};
-	}
-
-	function handleDFDWaypointDrag(e: MouseEvent) {
-		if (!draggingDFDWaypoint) return;
-
-		const flow = diagram.dfdFlows.find(f => f.id === draggingDFDWaypoint!.flowId);
-		if (!flow) return;
-
-		const svgPos = getSVGPoint(e);
-		const waypoints = [...(flow.waypoints || [])];
-
-		const waypointArrayIndex = draggingDFDWaypoint.waypointIndex - 1;
-
-		if (waypointArrayIndex >= 0 && waypointArrayIndex < waypoints.length) {
-			waypoints[waypointArrayIndex] = {
-				x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
-				y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
-			};
-
-			diagram.updateDFDFlow(flow.id, { waypoints });
-		}
-	}
-
+	// DFD segment drag handlers (draw.io style)
 	function handleDFDLineMouseDown(flowId: string, e: MouseEvent) {
 		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
-
-		// Select the flow
 		diagram.selectRelationship(flowId);
-
-		// Record pending drag — don't create waypoint yet, wait for movement threshold
-		const svgPos = getSVGPoint(e);
-		pendingDFDLineDrag = {
-			flowId,
-			startX: svgPos.x,
-			startY: svgPos.y,
-			screenX: e.clientX,
-			screenY: e.clientY
-		};
+		pendingDFDLineDrag = { flowId, screenX: e.clientX, screenY: e.clientY };
 	}
 
-	const DFD_DRAG_THRESHOLD = 4; // px screen distance before creating waypoint
+	const DFD_DRAG_THRESHOLD = 4;
 
 	function promotePendingDFDLineDrag(e: MouseEvent) {
 		if (!pendingDFDLineDrag) return;
-
 		const dx = e.clientX - pendingDFDLineDrag.screenX;
 		const dy = e.clientY - pendingDFDLineDrag.screenY;
 		if (dx * dx + dy * dy < DFD_DRAG_THRESHOLD * DFD_DRAG_THRESHOLD) return;
 
-		const { flowId, startX, startY } = pendingDFDLineDrag;
+		const { flowId } = pendingDFDLineDrag;
 		pendingDFDLineDrag = null;
 
 		const flow = diagram.dfdFlows.find(f => f.id === flowId);
@@ -1283,83 +1222,36 @@
 		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
 		if (!fromNode || !toNode) return;
 
-		const route = getDFDFlowRoute(flow, fromNode, toNode);
-		if (route.length < 2) return;
+		// Determine constraint from exit direction
+		const isFromH = getDFDFromExitIsHorizontal(fromNode, toNode);
+		// H exit → middle segment is vertical → drag changes x
+		// V exit → middle segment is horizontal → drag changes y
+		const constraint = isFromH ? 'x' : 'y';
 
-		// Find nearest segment to the original mousedown position
-		let bestDist = Infinity;
-		let bestSegIndex = 0;
-		for (let i = 0; i < route.length - 1; i++) {
-			const a = route[i], b = route[i + 1];
-			const abx = b.x - a.x, aby = b.y - a.y;
-			const len2 = abx * abx + aby * aby;
-			let t = len2 > 0 ? ((startX - a.x) * abx + (startY - a.y) * aby) / len2 : 0;
-			t = Math.max(0, Math.min(1, t));
-			const px = a.x + t * abx, py = a.y + t * aby;
-			const dist = (startX - px) ** 2 + (startY - py) ** 2;
-			if (dist < bestDist) { bestDist = dist; bestSegIndex = i; }
+		// Initialize waypoint from current auto-route middle segment if not yet set
+		if (!flow.waypoints || flow.waypoints.length === 0) {
+			const route = getDFDFlowRoute(flow, fromNode, toNode);
+			diagram.updateDFDFlow(flow.id, { waypoints: [{ x: route[1].x, y: route[1].y }] });
 		}
 
-		// Insert waypoint at current mouse position (not start — feels more natural)
+		draggingDFDSegment = { flowId, constraint };
+	}
+
+	function handleDFDSegmentDrag(e: MouseEvent) {
+		if (!draggingDFDSegment) return;
+		const flow = diagram.dfdFlows.find(f => f.id === draggingDFDSegment!.flowId);
+		if (!flow || !flow.waypoints || flow.waypoints.length === 0) return;
+
 		const svgPos = getSVGPoint(e);
-		const waypoints = [...(flow.waypoints || [])];
-		const newPoint = {
-			x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
-			y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
-		};
+		const wp = { ...flow.waypoints[0] };
 
-		waypoints.splice(bestSegIndex, 0, newPoint);
-		diagram.updateDFDFlow(flow.id, { waypoints });
+		if (draggingDFDSegment.constraint === 'x') {
+			wp.x = diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x;
+		} else {
+			wp.y = diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y;
+		}
 
-		// Start dragging the new waypoint (route index = bestSegIndex + 1)
-		draggingDFDWaypoint = {
-			flowId,
-			waypointIndex: bestSegIndex + 1,
-			startX: svgPos.x,
-			startY: svgPos.y
-		};
-	}
-
-	function addDFDWaypoint(flowId: string, insertIndex: number) {
-		const flow = diagram.dfdFlows.find(f => f.id === flowId);
-		if (!flow) return;
-
-		const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
-		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
-		if (!fromNode || !toNode) return;
-
-		const route = getDFDFlowRoute(flow, fromNode, toNode);
-		if (route.length < 2) return;
-
-		const waypoints = [...(flow.waypoints || [])];
-
-		// insertIndex is 1-based in route coordinates
-		// Route is [fromPort, ...waypoints, toPort]
-		// Segment at insertIndex connects route[insertIndex-1] to route[insertIndex]
-		const segStart = route[insertIndex - 1];
-		const segEnd = route[insertIndex];
-		if (!segStart || !segEnd) return;
-
-		const midpoint = {
-			x: diagram.showGrid ? Math.round(((segStart.x + segEnd.x) / 2) / 20) * 20 : (segStart.x + segEnd.x) / 2,
-			y: diagram.showGrid ? Math.round(((segStart.y + segEnd.y) / 2) / 20) * 20 : (segStart.y + segEnd.y) / 2
-		};
-
-		waypoints.splice(Math.max(0, insertIndex - 1), 0, midpoint);
-
-		diagram.updateDFDFlow(flow.id, { waypoints });
-		diagram.pushHistory('Add DFD waypoint');
-	}
-
-	function removeDFDWaypoint(flowId: string, index: number) {
-		const flow = diagram.dfdFlows.find(f => f.id === flowId);
-		if (!flow || !flow.waypoints) return;
-
-		const waypointArrayIndex = index - 1;
-		const waypoints = flow.waypoints.filter((_, i) => i !== waypointArrayIndex);
-
-		diagram.updateDFDFlow(flow.id, { waypoints: waypoints.length > 0 ? waypoints : undefined });
-		diagram.pushHistory('Remove DFD waypoint');
+		diagram.updateDFDFlow(flow.id, { waypoints: [wp] });
 	}
 
 	function handleCanvasMouseDown(e: MouseEvent) {
@@ -1562,8 +1454,8 @@
 				handleResizeMove(e);
 			} else if (draggingWaypoint) {
 				handleWaypointDrag(e);
-			} else if (draggingDFDWaypoint) {
-				handleDFDWaypointDrag(e);
+			} else if (draggingDFDSegment) {
+				handleDFDSegmentDrag(e);
 			} else if (pendingDFDLineDrag) {
 				promotePendingDFDLineDrag(e);
 			}
@@ -1609,10 +1501,10 @@
 				diagram.pushHistory('Move waypoint');
 				draggingWaypoint = null;
 			}
-			// Handle DFD waypoint drag end
-			if (draggingDFDWaypoint) {
-				diagram.pushHistory('Move DFD waypoint');
-				draggingDFDWaypoint = null;
+			// Handle DFD segment drag end
+			if (draggingDFDSegment) {
+				diagram.pushHistory('Move DFD segment');
+				draggingDFDSegment = null;
 			}
 			// Clear pending DFD line drag (was just a click, not a drag)
 			pendingDFDLineDrag = null;
@@ -2197,20 +2089,6 @@
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
 						onlinemousedown={(e) => handleDFDLineMouseDown(flow.id, e)}
 					/>
-
-					<!-- Waypoint handles for selected DFD flow -->
-					{#if selected && !collab.isViewer && !diagram.viewOnly && !presentation.active}
-						{@const route = getDFDFlowRoute(flow, fromNode, toNode)}
-						{#if route.length > 0}
-							<WaypointHandles
-								edge={flow}
-								{route}
-								onDragWaypoint={(index, e) => handleDFDWaypointDragStart(flow.id, index, e)}
-								onAddWaypoint={(index) => addDFDWaypoint(flow.id, index)}
-								onRemoveWaypoint={(index) => removeDFDWaypoint(flow.id, index)}
-							/>
-						{/if}
-					{/if}
 				{/if}
 			{/each}
 
