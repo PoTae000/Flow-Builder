@@ -11,7 +11,8 @@
 		selected = false,
 		animateIn = false,
 		dying = false,
-		onclick
+		onclick,
+		onlinemousedown
 	}: {
 		flow: DFDFlow;
 		fromNode: DFDNode;
@@ -20,6 +21,7 @@
 		animateIn?: boolean;
 		dying?: boolean;
 		onclick?: () => void;
+		onlinemousedown?: (e: MouseEvent) => void;
 	} = $props();
 
 	const colors = $derived(theme.colors);
@@ -260,6 +262,7 @@
 		stroke="transparent"
 		stroke-width="12"
 		fill="none"
+		onmousedown={(e) => { if (onlinemousedown && e.button === 0) { e.stopPropagation(); onlinemousedown(e); } }}
 	/>
 
 	<!-- Visible line -->

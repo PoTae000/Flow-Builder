@@ -1239,6 +1239,62 @@
 		}
 	}
 
+	function handleDFDLineDrag(flowId: string, e: MouseEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+
+		// Select the flow first
+		diagram.selectRelationship(flowId);
+
+		const flow = diagram.dfdFlows.find(f => f.id === flowId);
+		if (!flow) return;
+		const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
+		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
+		if (!fromNode || !toNode) return;
+
+		const svgPos = getSVGPoint(e);
+		const route = getDFDFlowRoute(flow, fromNode, toNode);
+		if (route.length < 2) return;
+
+		// Find nearest segment
+		let bestDist = Infinity;
+		let bestSegIndex = 0;
+		for (let i = 0; i < route.length - 1; i++) {
+			const a = route[i], b = route[i + 1];
+			const abx = b.x - a.x, aby = b.y - a.y;
+			const len2 = abx * abx + aby * aby;
+			let t = len2 > 0 ? ((svgPos.x - a.x) * abx + (svgPos.y - a.y) * aby) / len2 : 0;
+			t = Math.max(0, Math.min(1, t));
+			const px = a.x + t * abx, py = a.y + t * aby;
+			const dist = (svgPos.x - px) ** 2 + (svgPos.y - py) ** 2;
+			if (dist < bestDist) { bestDist = dist; bestSegIndex = i; }
+		}
+
+		// Insert waypoint at click position
+		const waypoints = [...(flow.waypoints || [])];
+		const newPoint = {
+			x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
+			y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
+		};
+
+		// bestSegIndex in route maps to waypoint array index: route[0]=fromPort, route[1..n-2]=waypoints, route[n-1]=toPort
+		// So segment i connects route[i] to route[i+1]. Waypoint insertion index = bestSegIndex (0-based in waypoints array)
+		// For segment 0 (fromPort->first): insert at waypoints[0]
+		// For segment k: insert at waypoints[k] (shifts existing waypoints right)
+		const waypointInsertIndex = bestSegIndex;
+		waypoints.splice(waypointInsertIndex, 0, newPoint);
+
+		diagram.updateDFDFlow(flow.id, { waypoints });
+
+		// Immediately start dragging the new waypoint
+		// In route coordinates, the new waypoint is at index waypointInsertIndex+1 (route index = waypointArrayIndex+1)
+		draggingDFDWaypoint = {
+			flowId,
+			waypointIndex: waypointInsertIndex + 1,
+			startX: svgPos.x,
+			startY: svgPos.y
+		};
+	}
+
 	function addDFDWaypoint(flowId: string, insertIndex: number) {
 		const flow = diagram.dfdFlows.find(f => f.id === flowId);
 		if (!flow) return;
@@ -2110,6 +2166,7 @@
 						animateIn={diagram.newDFDFlowIds.has(flow.id)}
 						dying={diagram.dyingDFDFlowIds.has(flow.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
+						onlinemousedown={(e) => handleDFDLineDrag(flow.id, e)}
 					/>
 
 					<!-- Waypoint handles for selected DFD flow -->
