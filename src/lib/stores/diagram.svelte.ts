@@ -115,6 +115,13 @@ export class DiagramState {
 	// Animation: relationship fade-out on delete
 	dyingRelationshipIds = $state<Set<string>>(new Set());
 
+	// Animation: DFD node dying (fade-out ghosts)
+	dyingDFDNodes = $state<Array<DFDNode & { _dyingRect?: { x: number; y: number; width: number; height: number } }>>([]);
+
+	// Animation: DFD flow line draw/undraw
+	newDFDFlowIds = $state<Set<string>>(new Set());
+	dyingDFDFlowIds = $state<Set<string>>(new Set());
+
 	// Data flow animation
 	showDataFlow = $state(false);
 
@@ -280,8 +287,75 @@ export class DiagramState {
 		this.notes = data.notes ?? [];
 		this.flowNodes = data.flowNodes ?? [];
 		this.flowEdges = data.flowEdges ?? [];
-		this.dfdNodes = data.dfdNodes ?? [];
-		this.dfdFlows = data.dfdFlows ?? [];
+
+		// ── DFD node animation detection ──
+		const wasDyingDFDFlows = new Set(this.dyingDFDFlowIds);
+		this.dyingDFDFlowIds = new Set();
+
+		const oldDFDNodeIds = new Set(this.dfdNodes.map(n => n.id));
+		const newDFDNodes: typeof this.dfdNodes = data.dfdNodes ?? [];
+		const newDFDNodeIds = new Set(newDFDNodes.map(n => n.id));
+
+		// DFD nodes coming back → pop-in animation
+		const restoredDFDNodeIds = newDFDNodes.filter(n => !oldDFDNodeIds.has(n.id)).map(n => n.id);
+		if (restoredDFDNodeIds.length > 0) {
+			this.newEntityIds = new Set([...this.newEntityIds, ...restoredDFDNodeIds]);
+			setTimeout(() => {
+				this.newEntityIds = new Set(
+					[...this.newEntityIds].filter(id => !restoredDFDNodeIds.includes(id))
+				);
+			}, 600);
+		}
+
+		// DFD nodes going away → dying animation
+		const removedDFDNodes = this.dfdNodes.filter(n => !newDFDNodeIds.has(n.id));
+		if (removedDFDNodes.length > 0) {
+			const dyingDFDEnts = removedDFDNodes.map(n => {
+				const rect = this._getDFDNodeRect(n);
+				return { ...n, _dyingRect: rect };
+			});
+			this.dyingDFDNodes = [...this.dyingDFDNodes, ...dyingDFDEnts];
+			const dyingIds = new Set(removedDFDNodes.map(n => n.id));
+			setTimeout(() => { this.dyingDFDNodes = this.dyingDFDNodes.filter(n => !dyingIds.has(n.id)); }, 900);
+		}
+
+		this.dfdNodes = newDFDNodes;
+
+		// ── DFD flow animation detection ──
+		const oldDFDFlowIds = new Set(
+			this.dfdFlows.filter(f => !wasDyingDFDFlows.has(f.id)).map(f => f.id)
+		);
+		const newDFDFlows: typeof this.dfdFlows = data.dfdFlows ?? [];
+		const newDFDFlowIds = new Set(newDFDFlows.map(f => f.id));
+
+		// DFD flows coming back → line-draw animation
+		const restoredDFDFlowIds = newDFDFlows.filter(f => !oldDFDFlowIds.has(f.id)).map(f => f.id);
+		if (restoredDFDFlowIds.length > 0) {
+			this.newDFDFlowIds = new Set([...this.newDFDFlowIds, ...restoredDFDFlowIds]);
+			setTimeout(() => {
+				this.newDFDFlowIds = new Set(
+					[...this.newDFDFlowIds].filter(id => !restoredDFDFlowIds.includes(id))
+				);
+			}, 3500);
+		}
+
+		// DFD flows going away → line-undraw animation
+		const removedDFDFlows = this.dfdFlows.filter(f => !newDFDFlowIds.has(f.id));
+		const removedDFDFlowIdList = removedDFDFlows.map(f => f.id);
+		if (removedDFDFlowIdList.length > 0) {
+			this.dyingDFDFlowIds = new Set([...this.dyingDFDFlowIds, ...removedDFDFlowIdList]);
+			// Keep removed flows visible during undraw animation
+			this.dfdFlows = [...newDFDFlows, ...removedDFDFlows];
+			setTimeout(() => {
+				this.dfdFlows = this.dfdFlows.filter(f => !removedDFDFlowIdList.includes(f.id));
+				this.dyingDFDFlowIds = new Set(
+					[...this.dyingDFDFlowIds].filter(id => !removedDFDFlowIdList.includes(id))
+				);
+			}, 2500);
+		} else {
+			this.dfdFlows = newDFDFlows;
+		}
+
 		this.clearSelection();
 	}
 
@@ -1511,36 +1585,78 @@ export class DiagramState {
 	}
 
 	selectAll() {
-		this.selectedNodeIds = this.entities.map((e) => e.id);
+		if (this.diagramType === 'flowchart') {
+			this.selectedNodeIds = this.flowNodes.map((n) => n.id);
+		} else if (this.diagramType === 'context') {
+			this.selectedNodeIds = this.dfdNodes.map((n) => n.id);
+		} else {
+			this.selectedNodeIds = this.entities.map((e) => e.id);
+		}
 		this.selectedEdgeId = null;
 	}
 
 	copySelected() {
 		if (this.selectedNodeIds.length === 0) return;
-		const ents = this.entities.filter((e) => this.selectedNodeIdSet.has(e.id));
-		this.clipboard = JSON.stringify(ents);
+		if (this.diagramType === 'flowchart') {
+			const nodes = this.flowNodes.filter((n) => this.selectedNodeIdSet.has(n.id));
+			this.clipboard = JSON.stringify({ type: 'flowchart', nodes });
+		} else if (this.diagramType === 'context') {
+			const nodes = this.dfdNodes.filter((n) => this.selectedNodeIdSet.has(n.id));
+			this.clipboard = JSON.stringify({ type: 'context', nodes });
+		} else {
+			const ents = this.entities.filter((e) => this.selectedNodeIdSet.has(e.id));
+			this.clipboard = JSON.stringify({ type: 'er', nodes: ents });
+		}
 	}
 
 	paste() {
 		if (!this.clipboard) return;
 		try {
-			const ents = JSON.parse(this.clipboard) as Entity[];
+			const data = JSON.parse(this.clipboard);
 			this.pushHistory('Paste');
 			const newIds: string[] = [];
-			for (const e of ents) {
-				const newId = generateId();
-				const entity: Entity = {
-					id: newId,
-					name: e.name + ' (copy)',
-					attributes: e.attributes.map((a) => ({ ...a, id: generateId() })),
-					position: { x: e.position.x + 30, y: e.position.y + 30 },
-					isWeak: e.isWeak,
-					color: e.color
-				};
-				this.entities.push(entity);
-				getCollab()?.pushEntityChange(entity);
-				newIds.push(newId);
+
+			if (data.type === 'context' && this.diagramType === 'context') {
+				for (const n of data.nodes as DFDNode[]) {
+					const newId = generateId();
+					const node: DFDNode = {
+						id: newId, name: n.name + ' (copy)', type: n.type,
+						position: { x: n.position.x + 30, y: n.position.y + 30 },
+						processNumber: n.processNumber, storeNumber: n.storeNumber, color: n.color
+					};
+					this.dfdNodes.push(node);
+					getCollab()?.pushDFDNodeChange(node);
+					newIds.push(newId);
+				}
+			} else if (data.type === 'flowchart' && this.diagramType === 'flowchart') {
+				for (const n of data.nodes as FlowNode[]) {
+					const newId = generateId();
+					const node: FlowNode = {
+						id: newId, name: n.name + ' (copy)', type: n.type,
+						position: { x: n.position.x + 30, y: n.position.y + 30 },
+						color: n.color
+					};
+					this.flowNodes.push(node);
+					getCollab()?.pushFlowNodeChange(node);
+					newIds.push(newId);
+				}
+			} else if (data.type === 'er' || Array.isArray(data.nodes || data)) {
+				// Legacy ER format or new format
+				const ents = (data.nodes || data) as Entity[];
+				for (const e of ents) {
+					const newId = generateId();
+					const entity: Entity = {
+						id: newId, name: e.name + ' (copy)',
+						attributes: e.attributes.map((a) => ({ ...a, id: generateId() })),
+						position: { x: e.position.x + 30, y: e.position.y + 30 },
+						isWeak: e.isWeak, color: e.color
+					};
+					this.entities.push(entity);
+					getCollab()?.pushEntityChange(entity);
+					newIds.push(newId);
+				}
 			}
+
 			this.selectedNodeIds = newIds;
 		} catch { /* invalid clipboard */ }
 	}
@@ -1849,13 +1965,14 @@ export class DiagramState {
 		return node;
 	}
 
-	updateDFDNode(id: string, updates: Partial<Pick<DFDNode, 'name' | 'type' | 'processNumber' | 'color'>>) {
+	updateDFDNode(id: string, updates: Partial<Pick<DFDNode, 'name' | 'type' | 'processNumber' | 'storeNumber' | 'color'>>) {
 		const node = this.dfdNodes.find((n) => n.id === id);
 		if (!node) return;
 		this.pushHistory();
 		if (updates.name !== undefined) node.name = updates.name;
 		if (updates.type !== undefined) node.type = updates.type;
 		if (updates.processNumber !== undefined) node.processNumber = updates.processNumber;
+		if (updates.storeNumber !== undefined) node.storeNumber = updates.storeNumber;
 		if (updates.color !== undefined) node.color = updates.color;
 		getCollab()?.pushDFDNodeChange(node);
 	}
@@ -1863,13 +1980,45 @@ export class DiagramState {
 	removeDFDNode(id: string) {
 		this.pushHistory('Remove DFD node');
 		const c = getCollab();
-		for (const f of this.dfdFlows) {
-			if (f.fromNodeId === id || f.toNodeId === id) c?.pushDFDFlowRemove(f.id);
+
+		// Trigger dying animation for connected flows
+		const connectedFlows = this.dfdFlows.filter(f => f.fromNodeId === id || f.toNodeId === id);
+		if (connectedFlows.length > 0) {
+			const flowIds = connectedFlows.map(f => f.id);
+			this.dyingDFDFlowIds = new Set([...this.dyingDFDFlowIds, ...flowIds]);
+			for (const f of connectedFlows) c?.pushDFDFlowRemove(f.id);
+			setTimeout(() => {
+				this.dfdFlows = this.dfdFlows.filter(f => !flowIds.includes(f.id));
+				this.dyingDFDFlowIds = new Set([...this.dyingDFDFlowIds].filter(fid => !flowIds.includes(fid)));
+			}, 700);
 		}
-		this.dfdFlows = this.dfdFlows.filter((f) => f.fromNodeId !== id && f.toNodeId !== id);
+
+		// Trigger dying animation for the node
+		const dying = this.dfdNodes.find(n => n.id === id);
+		if (dying) {
+			const rect = this._getDFDNodeRect(dying);
+			this.dyingDFDNodes = [...this.dyingDFDNodes, { ...dying, _dyingRect: rect }];
+			setTimeout(() => { this.dyingDFDNodes = this.dyingDFDNodes.filter(n => n.id !== id); }, 900);
+		}
+
 		this.dfdNodes = this.dfdNodes.filter((n) => n.id !== id);
 		this.selectedNodeIds = this.selectedNodeIds.filter((nid) => nid !== id);
 		c?.pushDFDNodeRemove(id);
+	}
+
+	private _getDFDNodeRect(node: DFDNode): { x: number; y: number; width: number; height: number } {
+		const cx = node.position.x;
+		const cy = node.position.y;
+		if (node.type === 'process') {
+			const w = 140;
+			const headerH = node.processNumber ? 28 : 0;
+			const h = headerH + 50;
+			return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
+		} else if (node.type === 'external-entity') {
+			return { x: cx - 60, y: cy - 25, width: 120, height: 50 };
+		} else {
+			return { x: cx - 70, y: cy - 20, width: 140, height: 40 };
+		}
 	}
 
 	moveDFDNode(id: string, position: Position) {
@@ -1901,22 +2050,31 @@ export class DiagramState {
 		const flow: DFDFlow = { id: generateId(), label, fromNodeId, toNodeId };
 		this.dfdFlows.push(flow);
 		this.selectedEdgeId = flow.id;
+		this.newDFDFlowIds = new Set([...this.newDFDFlowIds, flow.id]);
+		setTimeout(() => { this.newDFDFlowIds = new Set([...this.newDFDFlowIds].filter(id => id !== flow.id)); }, 1000);
 		getCollab()?.pushDFDFlowChange(flow);
 		return flow;
 	}
 
-	updateDFDFlow(id: string, updates: Partial<Pick<DFDFlow, 'label'>>) {
+	updateDFDFlow(id: string, updates: Partial<Pick<DFDFlow, 'label' | 'waypoints'>>) {
 		const flow = this.dfdFlows.find((f) => f.id === id);
 		if (!flow) return;
 		this.pushHistory();
 		if (updates.label !== undefined) flow.label = updates.label;
+		if (updates.waypoints !== undefined) flow.waypoints = updates.waypoints;
 		getCollab()?.pushDFDFlowChange(flow);
 	}
 
 	removeDFDFlow(id: string) {
 		this.pushHistory('Remove DFD flow');
-		this.dfdFlows = this.dfdFlows.filter((f) => f.id !== id);
 		if (this.selectedEdgeId === id) this.selectedEdgeId = null;
+		// Trigger dying animation (line undraw)
+		this.dyingDFDFlowIds = new Set([...this.dyingDFDFlowIds, id]);
+		setTimeout(() => {
+			if (!this.dyingDFDFlowIds.has(id)) return;
+			this.dfdFlows = this.dfdFlows.filter((f) => f.id !== id);
+			this.dyingDFDFlowIds = new Set([...this.dyingDFDFlowIds].filter(fid => fid !== id));
+		}, 700);
 		getCollab()?.pushDFDFlowRemove(id);
 	}
 

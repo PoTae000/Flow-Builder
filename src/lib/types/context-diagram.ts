@@ -13,6 +13,7 @@ export interface DFDNode {
 	name: string;
 	type: DFDNodeType;
 	processNumber?: string; // "1.0", "2.0"
+	storeNumber?: string; // "D1", "D2"
 	position: Position;
 	color?: string;
 }
@@ -22,4 +23,5 @@ export interface DFDFlow {
 	label: string;
 	fromNodeId: string;
 	toNodeId: string;
+	waypoints?: Position[];
 }

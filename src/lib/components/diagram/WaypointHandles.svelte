@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { FlowEdge } from '$lib/types/flowchart';
 	import type { Position } from '$lib/types/geometry';
 	import { theme } from '$lib/stores/theme.svelte';
 
@@ -10,7 +9,7 @@
 		onAddWaypoint,
 		onRemoveWaypoint
 	}: {
-		edge: FlowEdge;
+		edge: { id: string };
 		route: Position[];
 		onDragWaypoint: (index: number, e: MouseEvent) => void;
 		onAddWaypoint: (index: number) => void;

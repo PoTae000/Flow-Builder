@@ -29,7 +29,7 @@
 	import { createOrthogonalPath } from '$lib/renderers/shared/svg-utils';
 	import type { CardinalityType } from '$lib/types/er';
 	import type { FlowEdge } from '$lib/types/flowchart';
-	import type { DFDFlow } from '$lib/types/context-diagram';
+	import type { DFDFlow, DFDNode } from '$lib/types/context-diagram';
 
 	let svgEl: SVGSVGElement | undefined = $state();
 
@@ -116,36 +116,107 @@
 		return offsets;
 	});
 
-	// Calculate flow offsets to prevent overlapping (for DFD)
-	const dfdFlowOffsets = $derived.by(() => {
-		const offsets = new Map<string, number>();
-		const groups = new Map<string, DFDFlow[]>();
+	// Helper: compute DFD flow route (shared between rendering & particle paths)
+	function getDFDNodeRect(node: DFDNode): { x: number; y: number; w: number; h: number } {
+		const cx = node.position.x, cy = node.position.y;
+		if (node.type === 'process') {
+			const w = 140, h = (node.processNumber ? 28 : 0) + 50;
+			return { x: cx - w / 2, y: cy - h / 2, w, h };
+		} else if (node.type === 'external-entity') {
+			return { x: cx - 60, y: cy - 25, w: 120, h: 50 };
+		} else {
+			return { x: cx - 70, y: cy - 20, w: 140, h: 40 };
+		}
+	}
 
-		// Group flows by from-to pair (DIRECTIONAL - same direction only)
-		for (const flow of diagram.dfdFlows) {
-			// Use directional key: A→B is different from B→A
-			const key = `${flow.fromNodeId}→${flow.toNodeId}`;
+	function getDFDPortToward(node: DFDNode, target: { x: number; y: number }): { x: number; y: number } {
+		const rect = getDFDNodeRect(node);
+		const cx = node.position.x, cy = node.position.y;
+		const dx = target.x - cx, dy = target.y - cy;
 
-			if (!groups.has(key)) groups.set(key, []);
-			groups.get(key)!.push(flow);
+		if (node.type === 'data-store') {
+			const portX = Math.max(rect.x + 8, Math.min(rect.x + rect.w - 8, target.x));
+			return dy >= 0 ? { x: portX, y: rect.y + rect.h } : { x: portX, y: rect.y };
 		}
 
-		// Assign offsets to parallel flows
-		const OFFSET_STEP = 40; // Increased to prevent overlap
-		for (const [_key, flows] of groups) {
-			if (flows.length === 1) {
-				offsets.set(flows[0].id, 0);
-			} else {
-				const half = (flows.length - 1) / 2;
-				flows.forEach((flow, i) => {
-					const offset = (i - half) * OFFSET_STEP;
-					offsets.set(flow.id, offset);
-				});
+		if (Math.abs(dx) > Math.abs(dy)) {
+			const portY = Math.max(rect.y + 8, Math.min(rect.y + rect.h - 8, target.y));
+			return dx > 0 ? { x: rect.x + rect.w, y: portY } : { x: rect.x, y: portY };
+		} else {
+			const portX = Math.max(rect.x + 8, Math.min(rect.x + rect.w - 8, target.x));
+			return dy > 0 ? { x: portX, y: rect.y + rect.h } : { x: portX, y: rect.y };
+		}
+	}
+
+	function getDFDAutoRoute(fromNode: DFDNode, toNode: DFDNode): { x: number; y: number }[] {
+		const fromRect = getDFDNodeRect(fromNode);
+		const toRect = getDFDNodeRect(toNode);
+		const fcx = fromNode.position.x, fcy = fromNode.position.y;
+		const tcx = toNode.position.x, tcy = toNode.position.y;
+
+		type Dir = 'top' | 'bottom' | 'left' | 'right';
+		function naturalDir(fx: number, fy: number, tx: number, ty: number, nodeType: string): Dir {
+			const dx = tx - fx, dy = ty - fy;
+			if (nodeType === 'data-store') return dy >= 0 ? 'bottom' : 'top';
+			if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+			return dy > 0 ? 'bottom' : 'top';
+		}
+		function getPort(dir: Dir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number) {
+			switch (dir) {
+				case 'right': return { x: rect.x + rect.w, y: cy };
+				case 'left': return { x: rect.x, y: cy };
+				case 'bottom': return { x: cx, y: rect.y + rect.h };
+				case 'top': return { x: cx, y: rect.y };
 			}
 		}
 
-		return offsets;
-	});
+		const fromDir = naturalDir(fcx, fcy, tcx, tcy, fromNode.type);
+		const toDir = naturalDir(tcx, tcy, fcx, fcy, toNode.type);
+		const p1 = getPort(fromDir, fromRect, fcx, fcy);
+		const p4 = getPort(toDir, toRect, tcx, tcy);
+
+		const sH = fromDir === 'left' || fromDir === 'right';
+		const eH = toDir === 'left' || toDir === 'right';
+		let p2: { x: number; y: number }, p3: { x: number; y: number };
+
+		if (sH && eH) {
+			const midX = (p1.x + p4.x) / 2;
+			p2 = { x: midX, y: p1.y }; p3 = { x: midX, y: p4.y };
+		} else if (!sH && !eH) {
+			const midY = (p1.y + p4.y) / 2;
+			p2 = { x: p1.x, y: midY }; p3 = { x: p4.x, y: midY };
+		} else if (sH && !eH) {
+			p2 = { x: p4.x, y: p1.y }; p3 = p2;
+		} else {
+			p2 = { x: p1.x, y: p4.y }; p3 = p2;
+		}
+
+		const GAP = 30;
+		if ((fromDir === 'top' && toDir === 'top') || (fromDir === 'bottom' && toDir === 'bottom')) {
+			const routeY = fromDir === 'top'
+				? Math.min(fromRect.y, toRect.y) - GAP
+				: Math.max(fromRect.y + fromRect.h, toRect.y + toRect.h) + GAP;
+			p2 = { x: p1.x, y: routeY }; p3 = { x: p4.x, y: routeY };
+		} else if ((fromDir === 'left' && toDir === 'left') || (fromDir === 'right' && toDir === 'right')) {
+			const routeX = fromDir === 'left'
+				? Math.min(fromRect.x, toRect.x) - GAP
+				: Math.max(fromRect.x + fromRect.w, toRect.x + toRect.w) + GAP;
+			p2 = { x: routeX, y: p1.y }; p3 = { x: routeX, y: p4.y };
+		}
+
+		return [p1, p2, p3, p4];
+	}
+
+	function getDFDFlowRoute(flow: DFDFlow, fromNode: DFDNode, toNode: DFDNode): { x: number; y: number }[] {
+		if (flow.waypoints && flow.waypoints.length > 0) {
+			const firstWp = flow.waypoints[0];
+			const lastWp = flow.waypoints[flow.waypoints.length - 1];
+			const fromPort = getDFDPortToward(fromNode, firstWp);
+			const toPort = getDFDPortToward(toNode, lastWp);
+			return [fromPort, ...flow.waypoints, toPort];
+		}
+		return getDFDAutoRoute(fromNode, toNode);
+	}
 
 	// A4: Responsive empty state
 	let isMobile = $state(false);
@@ -248,6 +319,14 @@
 	// Waypoint dragging state
 	let draggingWaypoint = $state<{
 		edgeId: string;
+		waypointIndex: number;
+		startX: number;
+		startY: number;
+	} | null>(null);
+
+	// DFD waypoint dragging state
+	let draggingDFDWaypoint = $state<{
+		flowId: string;
 		waypointIndex: number;
 		startX: number;
 		startY: number;
@@ -652,21 +731,10 @@
 			const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
 			if (!fromNode || !toNode) return null;
 
-			const offset = dfdFlowOffsets.get(flow.id) ?? 0;
-			let x1 = fromNode.position.x, y1 = fromNode.position.y;
-			let x2 = toNode.position.x, y2 = toNode.position.y;
-
-			if (offset !== 0) {
-				const dx = x2 - x1, dy = y2 - y1;
-				const length = Math.sqrt(dx * dx + dy * dy);
-				if (length > 0) {
-					const perpX = -dy / length, perpY = dx / length;
-					x1 += perpX * offset; y1 += perpY * offset;
-					x2 += perpX * offset; y2 += perpY * offset;
-				}
-			}
-
-			return { id: flow.id, d: `M${x1},${y1} L${x2},${y2}`, particleCount: 1, bidirectional: false };
+			const pts = getDFDFlowRoute(flow, fromNode, toNode);
+			if (pts.length < 2) return null;
+			const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+			return { id: flow.id, d, particleCount: 1, bidirectional: false };
 		}).filter((p): p is PathData => p !== null);
 	});
 
@@ -1138,6 +1206,81 @@
 		diagram.pushHistory('Remove waypoint');
 	}
 
+	// DFD waypoint handlers
+	function handleDFDWaypointDragStart(flowId: string, index: number, e: MouseEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const svgPos = getSVGPoint(e);
+		draggingDFDWaypoint = {
+			flowId,
+			waypointIndex: index,
+			startX: svgPos.x,
+			startY: svgPos.y
+		};
+	}
+
+	function handleDFDWaypointDrag(e: MouseEvent) {
+		if (!draggingDFDWaypoint) return;
+
+		const flow = diagram.dfdFlows.find(f => f.id === draggingDFDWaypoint!.flowId);
+		if (!flow) return;
+
+		const svgPos = getSVGPoint(e);
+		const waypoints = [...(flow.waypoints || [])];
+
+		const waypointArrayIndex = draggingDFDWaypoint.waypointIndex - 1;
+
+		if (waypointArrayIndex >= 0 && waypointArrayIndex < waypoints.length) {
+			waypoints[waypointArrayIndex] = {
+				x: diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x,
+				y: diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y
+			};
+
+			diagram.updateDFDFlow(flow.id, { waypoints });
+		}
+	}
+
+	function addDFDWaypoint(flowId: string, insertIndex: number) {
+		const flow = diagram.dfdFlows.find(f => f.id === flowId);
+		if (!flow) return;
+
+		const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
+		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
+		if (!fromNode || !toNode) return;
+
+		const route = getDFDFlowRoute(flow, fromNode, toNode);
+		if (route.length < 2) return;
+
+		const waypoints = [...(flow.waypoints || [])];
+
+		// insertIndex is 1-based in route coordinates
+		// Route is [fromPort, ...waypoints, toPort]
+		// Segment at insertIndex connects route[insertIndex-1] to route[insertIndex]
+		const segStart = route[insertIndex - 1];
+		const segEnd = route[insertIndex];
+		if (!segStart || !segEnd) return;
+
+		const midpoint = {
+			x: diagram.showGrid ? Math.round(((segStart.x + segEnd.x) / 2) / 20) * 20 : (segStart.x + segEnd.x) / 2,
+			y: diagram.showGrid ? Math.round(((segStart.y + segEnd.y) / 2) / 20) * 20 : (segStart.y + segEnd.y) / 2
+		};
+
+		waypoints.splice(Math.max(0, insertIndex - 1), 0, midpoint);
+
+		diagram.updateDFDFlow(flow.id, { waypoints });
+		diagram.pushHistory('Add DFD waypoint');
+	}
+
+	function removeDFDWaypoint(flowId: string, index: number) {
+		const flow = diagram.dfdFlows.find(f => f.id === flowId);
+		if (!flow || !flow.waypoints) return;
+
+		const waypointArrayIndex = index - 1;
+		const waypoints = flow.waypoints.filter((_, i) => i !== waypointArrayIndex);
+
+		diagram.updateDFDFlow(flow.id, { waypoints: waypoints.length > 0 ? waypoints : undefined });
+		diagram.pushHistory('Remove DFD waypoint');
+	}
+
 	function handleCanvasMouseDown(e: MouseEvent) {
 		closeContextMenu();
 		if (presentation.active) return; // Block all canvas interaction during presentation
@@ -1267,6 +1410,30 @@
 							}
 						}
 					}
+				} else if (dragging.offsets.size === 1 && diagram.diagramType === 'context') {
+					const [dragId] = dragging.offsets.keys();
+					const off = dragging.offsets.get(dragId)!;
+					const draggedNode = diagram.dfdNodes.find(n => n.id === dragId);
+					if (draggedNode) {
+						const newX = svgPos.x - off.dx;
+						const newY = svgPos.y - off.dy;
+
+						for (const node of diagram.dfdNodes) {
+							if (node.id === dragId) continue;
+
+							// Vertical (x-axis) alignment
+							if (Math.abs(newX - node.position.x) <= SNAP_THRESHOLD) {
+								snapDx = node.position.x - newX;
+								alignmentGuides.vertical.push(node.position.x);
+							}
+
+							// Horizontal (y-axis) alignment
+							if (Math.abs(newY - node.position.y) <= SNAP_THRESHOLD) {
+								snapDy = node.position.y - newY;
+								alignmentGuides.horizontal.push(node.position.y);
+							}
+						}
+					}
 				}
 
 				for (const [id, off] of dragging.offsets) {
@@ -1314,6 +1481,8 @@
 				handleResizeMove(e);
 			} else if (draggingWaypoint) {
 				handleWaypointDrag(e);
+			} else if (draggingDFDWaypoint) {
+				handleDFDWaypointDrag(e);
 			}
 		});
 	}
@@ -1328,12 +1497,16 @@
 	function getNodeRect(node: { position: { x: number; y: number }; type?: string }) {
 		const { x: cx, y: cy } = node.position;
 		const type = node.type;
-		// DFD external-entity is a circle r=40
-		if (type === 'external-entity') return { x: cx - 40, y: cy - 40, width: 80, height: 80 };
+		// DFD external-entity (120x50 rect)
+		if (type === 'external-entity') return { x: cx - 60, y: cy - 25, width: 120, height: 50 };
 		// DFD data-store
 		if (type === 'data-store') return { x: cx - 70, y: cy - 20, width: 140, height: 40 };
-		// DFD process
-		if (type === 'process' && diagram.diagramType === 'context') return { x: cx - 60, y: cy - 25, width: 120, height: 50 };
+		// DFD process (Gane-Sarson rect)
+		if (type === 'process' && diagram.diagramType === 'context') {
+			const n = diagram.dfdNodes.find(n => n.id === (node as any).id);
+			const h = (n?.processNumber ? 28 : 0) + 50;
+			return { x: cx - 70, y: cy - h / 2, width: 140, height: h };
+		}
 		// Flowchart connector (circle r=25)
 		if (type === 'connector') return { x: cx - 25, y: cy - 25, width: 50, height: 50 };
 		// Flowchart default (140x60)
@@ -1352,6 +1525,11 @@
 			if (draggingWaypoint) {
 				diagram.pushHistory('Move waypoint');
 				draggingWaypoint = null;
+			}
+			// Handle DFD waypoint drag end
+			if (draggingDFDWaypoint) {
+				diagram.pushHistory('Move DFD waypoint');
+				draggingDFDWaypoint = null;
 			}
 			// Physics: unpin dragged entities
 			if (diagram.physicsMode && dragging) {
@@ -1594,9 +1772,9 @@
 			<path d="M 0 1 L 10 5 L 0 9" fill={colors.relationshipStroke} />
 		</marker>
 		<!-- DFD arrow -->
-		<marker id="dfd-arrow" viewBox="0 0 10 10" refX="10" refY="5"
-			markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-			<path d="M 0 1 L 10 5 L 0 9" fill={colors.relationshipStroke} />
+		<marker id="dfd-arrow" viewBox="0 0 10 10" refX="0" refY="5"
+			markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+			<path d="M 0 0 L 10 5 L 0 10 Z" fill={colors.relationshipStroke} stroke="none" />
 		</marker>
 		<!-- Temporary connection arrows -->
 		<marker id="arrow-temp" viewBox="0 0 10 10" refX="10" refY="5"
@@ -1918,23 +2096,39 @@
 			{/if}
 
 		{:else if diagram.diagramType === 'context'}
-			<!-- DFD flows -->
+			<!-- DFD flows (below nodes — node covers the connection point cleanly) -->
 			{#each diagram.dfdFlows as flow (flow.id)}
 				{@const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId)}
 				{@const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId)}
 				{#if fromNode && toNode}
+					{@const selected = diagram.selectedEdgeId === flow.id}
 					<DFDFlowLine
 						{flow}
 						{fromNode}
 						{toNode}
-						offset={dfdFlowOffsets.get(flow.id) ?? 0}
-						selected={diagram.selectedEdgeId === flow.id}
+						{selected}
+						animateIn={diagram.newDFDFlowIds.has(flow.id)}
+						dying={diagram.dyingDFDFlowIds.has(flow.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
 					/>
+
+					<!-- Waypoint handles for selected DFD flow -->
+					{#if selected && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+						{@const route = getDFDFlowRoute(flow, fromNode, toNode)}
+						{#if route.length > 0}
+							<WaypointHandles
+								edge={flow}
+								{route}
+								onDragWaypoint={(index, e) => handleDFDWaypointDragStart(flow.id, index, e)}
+								onAddWaypoint={(index) => addDFDWaypoint(flow.id, index)}
+								onRemoveWaypoint={(index) => removeDFDWaypoint(flow.id, index)}
+							/>
+						{/if}
+					{/if}
 				{/if}
 			{/each}
 
-			<!-- DFD nodes -->
+			<!-- DFD nodes (on top — border covers arrow tip, arrow body visible outside) -->
 			{#each diagram.dfdNodes as node (node.id)}
 				<DFDNodeShape
 					{node}
@@ -1945,6 +2139,63 @@
 					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
 					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 				/>
+			{/each}
+
+			<!-- Dying DFD nodes (fade-out ghosts) -->
+			{#each diagram.dyingDFDNodes as node (node.id)}
+				{@const rect = node._dyingRect ?? { x: node.position.x - 70, y: node.position.y - 25, width: 140, height: 50 }}
+				{@const perimeter = 2 * (rect.width + rect.height)}
+				<g class="dying-entity" style="--perimeter: {perimeter}; transform-origin: {rect.x + rect.width / 2}px {rect.y + rect.height / 2}px;">
+					<!-- Fill rect (fades out) -->
+					<rect
+						class="dying-fill"
+						x={rect.x}
+						y={rect.y}
+						width={rect.width}
+						height={rect.height}
+						rx="3"
+						fill={node.color || colors.entityFill}
+						stroke="none"
+					/>
+					<!-- Border rect (undraw animation) -->
+					<rect
+						class="dying-border"
+						x={rect.x}
+						y={rect.y}
+						width={rect.width}
+						height={rect.height}
+						rx="3"
+						fill="none"
+						stroke={colors.entityStroke}
+						stroke-width="1.5"
+						stroke-dasharray={perimeter}
+					/>
+					<!-- Header line for process with number -->
+					{#if node.type === 'process' && node.processNumber}
+						{@const headerH = 28}
+						<line
+							class="dying-header-line"
+							x1={rect.x}
+							y1={rect.y + headerH}
+							x2={rect.x + rect.width}
+							y2={rect.y + headerH}
+							stroke={colors.entityStroke}
+							stroke-width="1.5"
+							stroke-dasharray={rect.width}
+						/>
+					{/if}
+					<!-- Node name text (fades) -->
+					<text
+						class="dying-text"
+						x={rect.x + rect.width / 2}
+						y={rect.y + rect.height / 2}
+						text-anchor="middle"
+						dominant-baseline="central"
+						fill={colors.entityHeaderText}
+						font-size="13"
+						font-weight="600"
+					>{node.name}</text>
+				</g>
 			{/each}
 		{/if}
 
