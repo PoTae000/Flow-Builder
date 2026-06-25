@@ -150,6 +150,9 @@ export class AgentState {
 				if (action.processNumber) {
 					diagram.updateDFDNode(node.id, { processNumber: action.processNumber });
 				}
+				if (action.storeNumber) {
+					diagram.updateDFDNode(node.id, { storeNumber: action.storeNumber });
+				}
 				break;
 			}
 			case 'remove-dfd-node': {
@@ -372,7 +375,7 @@ export class AgentState {
 		}
 		if (diagram.diagramType === 'context') {
 			return {
-				dfdNodes: diagram.dfdNodes.map(n => ({ name: n.name, type: n.type, processNumber: n.processNumber })),
+				dfdNodes: diagram.dfdNodes.map(n => ({ name: n.name, type: n.type, processNumber: n.processNumber, storeNumber: n.storeNumber })),
 				dfdFlows: diagram.dfdFlows.map(f => {
 					const from = diagram.dfdNodes.find(n => n.id === f.fromNodeId);
 					const to = diagram.dfdNodes.find(n => n.id === f.toNodeId);

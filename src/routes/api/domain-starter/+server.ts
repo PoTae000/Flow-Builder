@@ -79,7 +79,7 @@ Return ONLY valid JSON in this exact format:
   "dfdNodes": [
     { "name": "Customer", "type": "external-entity" },
     { "name": "Process Order", "type": "process", "processNumber": "1.0" },
-    { "name": "Orders DB", "type": "data-store" }
+    { "name": "Orders DB", "type": "data-store", "storeNumber": "D1" }
   ],
   "dfdFlows": [
     { "label": "Order Request", "fromNode": "Customer", "toNode": "Process Order" },
@@ -91,6 +91,7 @@ Node types: "process", "external-entity", "data-store"
 
 Rules:
 - Number all processes (1.0, 2.0, etc.)
+- All data-stores MUST have storeNumber (D1, D2, D3, etc.)
 - All flows MUST have descriptive labels
 - External entities cannot connect directly
 - Processes must have flows in AND out

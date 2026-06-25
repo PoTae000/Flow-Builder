@@ -31,7 +31,7 @@ Node types: "start-end", "process", "decision", "input-output", "connector", "do
 
 const DFD_ACTION_SCHEMA = `
 Available actions (AgentAction[]):
-- { "op": "add-dfd-node", "name": "NodeName", "type": "process", "processNumber": "1.0" }
+- { "op": "add-dfd-node", "name": "NodeName", "type": "process", "processNumber": "1.0" } (data-store ต้องมี "storeNumber": "D1")
 - { "op": "remove-dfd-node", "name": "NodeName" }
 - { "op": "add-dfd-flow", "label": "flow label", "fromNode": "NodeA", "toNode": "NodeB" }
 - { "op": "remove-dfd-flow", "fromNode": "NodeA", "toNode": "NodeB" }
@@ -98,6 +98,7 @@ function buildDFDContext(dfdNodes: any[], dfdFlows: any[]): string {
 	for (const n of dfdNodes) {
 		desc += `- ${sanitizeName(n.name)} [${n.type}]`;
 		if (n.processNumber) desc += ` #${n.processNumber}`;
+		if (n.storeNumber) desc += ` ${n.storeNumber}`;
 		desc += '\n';
 	}
 	desc += '\nFlows:\n';

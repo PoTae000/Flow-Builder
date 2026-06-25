@@ -20,6 +20,7 @@
 	import ResizeHandles from './ResizeHandles.svelte';
 	import WaypointHandles from './WaypointHandles.svelte';
 	import DFDNodeShape from './DFDNodeShape.svelte';
+	import DFDConnectionZone from './DFDConnectionZone.svelte';
 	import DFDFlowLine from './DFDFlowLine.svelte';
 	import RemoteCursor from './RemoteCursor.svelte';
 	import DataFlowParticles from './DataFlowParticles.svelte';
@@ -136,12 +137,13 @@
 		if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
 		return dy > 0 ? 'bottom' : 'top';
 	}
-	function dfdGetPort(dir: DFDDir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number) {
+	function dfdGetPort(dir: DFDDir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number, offset?: number) {
+		const off = offset || 0;
 		switch (dir) {
-			case 'right': return { x: rect.x + rect.w, y: cy };
-			case 'left': return { x: rect.x, y: cy };
-			case 'bottom': return { x: cx, y: rect.y + rect.h };
-			case 'top': return { x: cx, y: rect.y };
+			case 'right': return { x: rect.x + rect.w, y: Math.max(rect.y, Math.min(rect.y + rect.h, cy + off)) };
+			case 'left': return { x: rect.x, y: Math.max(rect.y, Math.min(rect.y + rect.h, cy + off)) };
+			case 'bottom': return { x: Math.max(rect.x, Math.min(rect.x + rect.w, cx + off)), y: rect.y + rect.h };
+			case 'top': return { x: Math.max(rect.x, Math.min(rect.x + rect.w, cx + off)), y: rect.y };
 		}
 	}
 
@@ -151,8 +153,8 @@
 		const fcx = fromNode.position.x, fcy = fromNode.position.y;
 		const tcx = toNode.position.x, tcy = toNode.position.y;
 
-		const fromDir = dfdNaturalDir(fcx, fcy, tcx, tcy, fromNode.type);
-		const toDir = dfdNaturalDir(tcx, tcy, fcx, fcy, toNode.type);
+		const fromDir = flow.fromSide || dfdNaturalDir(fcx, fcy, tcx, tcy, fromNode.type);
+		const toDir = flow.toSide || dfdNaturalDir(tcx, tcy, fcx, fcy, toNode.type);
 		const p1 = dfdGetPort(fromDir, fromRect, fcx, fcy);
 		const p4 = dfdGetPort(toDir, toRect, tcx, tcy);
 
@@ -200,8 +202,8 @@
 		return [p1, p2, p3, p4];
 	}
 
-	function getDFDFromExitIsHorizontal(fromNode: DFDNode, toNode: DFDNode): boolean {
-		const fromDir = dfdNaturalDir(fromNode.position.x, fromNode.position.y, toNode.position.x, toNode.position.y, fromNode.type);
+	function getDFDFromExitIsHorizontal(flow: DFDFlow, fromNode: DFDNode, toNode: DFDNode): boolean {
+		const fromDir = flow.fromSide || dfdNaturalDir(fromNode.position.x, fromNode.position.y, toNode.position.x, toNode.position.y, fromNode.type);
 		return fromDir === 'left' || fromDir === 'right';
 	}
 
@@ -260,9 +262,10 @@
 	let panning = $state<{ startX: number; startY: number; panStartX: number; panStartY: number } | null>(null);
 
 	// Connection drag state (for drag-to-connect edges)
-	let draggingConnection = $state<{ fromNodeId: string; fromSide: 'top' | 'right' | 'bottom' | 'left'; currentX: number; currentY: number } | null>(null);
+	let draggingConnection = $state<{ fromNodeId: string; fromSide: 'top' | 'right' | 'bottom' | 'left'; startX: number; startY: number; currentX: number; currentY: number } | null>(null);
 	let hoveredNodeId = $state<string | null>(null);
 	let hoveredFlowNodeId = $state<string | null>(null); // For showing connection handles on hover
+	let hoveredDFDNodeId = $state<string | null>(null); // For showing connection handles on DFD node hover
 
 	// Marquee selection state
 	let selecting = $state<{ startX: number; startY: number; screenX: number; screenY: number } | null>(null);
@@ -287,6 +290,7 @@
 	let editingLabel = $state<{
 		nodeId?: string;
 		edgeId?: string;
+		dfdFlowId?: string;
 		text: string;
 		rect: DOMRect;
 	} | null>(null);
@@ -315,6 +319,7 @@
 	let draggingDFDSegment = $state<{
 		flowId: string;
 		constraint: 'x' | 'y'; // 'x' = vertical segment, drag changes x; 'y' = horizontal segment, drag changes y
+		offset: number; // offset between mouse and the mid-segment position (prevents jump on drag start)
 	} | null>(null);
 
 	// Pending DFD line drag — mousedown recorded, waiting for movement threshold
@@ -322,6 +327,13 @@
 		flowId: string;
 		screenX: number;
 		screenY: number;
+	} | null>(null);
+
+	// DFD label dragging
+	let draggingDFDLabel = $state<{
+		flowId: string;
+		offsetX: number; // offset between mouse and label position
+		offsetY: number;
 	} | null>(null);
 
 	// Alignment guides
@@ -784,9 +796,32 @@
 	function handleStartConnection(nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', clientX: number, clientY: number) {
 		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
 		const svgPos = screenToSvg(clientX, clientY);
+		// Snap start position to the node edge
+		let startX = svgPos.x, startY = svgPos.y;
+		if (diagram.diagramType === 'context') {
+			const node = diagram.dfdNodes.find(n => n.id === nodeId);
+			if (node) {
+				const rect = getDFDNodeRect(node);
+				if (side === 'top') { startY = rect.y; startX = Math.max(rect.x, Math.min(rect.x + rect.w, svgPos.x)); }
+				else if (side === 'bottom') { startY = rect.y + rect.h; startX = Math.max(rect.x, Math.min(rect.x + rect.w, svgPos.x)); }
+				else if (side === 'left') { startX = rect.x; startY = Math.max(rect.y, Math.min(rect.y + rect.h, svgPos.y)); }
+				else { startX = rect.x + rect.w; startY = Math.max(rect.y, Math.min(rect.y + rect.h, svgPos.y)); }
+			}
+		} else if (diagram.diagramType === 'flowchart') {
+			const node = diagram.flowNodes.find(n => n.id === nodeId);
+			if (node) {
+				const W = node.width || 140, H = node.height || 60;
+				if (side === 'top') startY = node.position.y - H / 2;
+				else if (side === 'bottom') startY = node.position.y + H / 2;
+				else if (side === 'left') startX = node.position.x - W / 2;
+				else startX = node.position.x + W / 2;
+			}
+		}
 		draggingConnection = {
 			fromNodeId: nodeId,
 			fromSide: side,
+			startX,
+			startY,
 			currentX: svgPos.x,
 			currentY: svgPos.y
 		};
@@ -1030,6 +1065,14 @@
 	function saveInlineEdit(newText: string) {
 		if (!editingLabel) return;
 		const text = newText.trim();
+
+		if (editingLabel.dfdFlowId) {
+			// DFD flows can have empty labels — always save
+			diagram.updateDFDFlow(editingLabel.dfdFlowId, { label: text });
+			editingLabel = null;
+			return;
+		}
+
 		if (text === '') {
 			editingLabel = null;
 			return;
@@ -1041,6 +1084,36 @@
 			diagram.updateFlowEdge(editingLabel.edgeId, { label: text });
 		}
 		editingLabel = null;
+	}
+
+	function startEditingDFDFlowLabel(flowId: string) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		const flow = diagram.dfdFlows.find(f => f.id === flowId);
+		if (!flow || !svgEl) return;
+		const fromNode = diagram.dfdNodes.find(n => n.id === flow.fromNodeId);
+		const toNode = diagram.dfdNodes.find(n => n.id === flow.toNodeId);
+		if (!fromNode || !toNode) return;
+
+		// Get the label position from the route midpoint
+		const route = getDFDFlowRoute(flow, fromNode, toNode);
+		let midX = (route[0].x + route[route.length - 1].x) / 2;
+		let midY = (route[0].y + route[route.length - 1].y) / 2;
+		if (route.length >= 4) {
+			midX = (route[1].x + route[2].x) / 2;
+			midY = (route[1].y + route[2].y) / 2;
+		}
+
+		// Convert SVG world coords to position relative to the positioned ancestor (absolute positioning)
+		// SVG transform: translate(panX, panY) scale(zoom) → screenRelX = x * zoom + panX
+		const editorW = 120;
+		const left = midX * diagram.zoom + diagram.panX - editorW / 2;
+		const top = midY * diagram.zoom + diagram.panY - 10;
+
+		editingLabel = {
+			dfdFlowId: flowId,
+			text: flow.label || '',
+			rect: new DOMRect(left, top, editorW, 20)
+		};
 	}
 
 	function cancelInlineEdit() {
@@ -1205,7 +1278,7 @@
 		pendingDFDLineDrag = { flowId, screenX: e.clientX, screenY: e.clientY };
 	}
 
-	const DFD_DRAG_THRESHOLD = 4;
+	const DFD_DRAG_THRESHOLD = 10;
 
 	function promotePendingDFDLineDrag(e: MouseEvent) {
 		if (!pendingDFDLineDrag) return;
@@ -1223,18 +1296,26 @@
 		if (!fromNode || !toNode) return;
 
 		// Determine constraint from exit direction
-		const isFromH = getDFDFromExitIsHorizontal(fromNode, toNode);
+		const isFromH = getDFDFromExitIsHorizontal(flow, fromNode, toNode);
 		// H exit → middle segment is vertical → drag changes x
 		// V exit → middle segment is horizontal → drag changes y
 		const constraint = isFromH ? 'x' : 'y';
 
+		// Get current mid-segment position (from existing waypoint or auto-route)
+		const route = getDFDFlowRoute(flow, fromNode, toNode);
+		const midSegVal = constraint === 'x' ? route[1].x : route[1].y;
+
 		// Initialize waypoint from current auto-route middle segment if not yet set
 		if (!flow.waypoints || flow.waypoints.length === 0) {
-			const route = getDFDFlowRoute(flow, fromNode, toNode);
 			diagram.updateDFDFlow(flow.id, { waypoints: [{ x: route[1].x, y: route[1].y }] });
 		}
 
-		draggingDFDSegment = { flowId, constraint };
+		// Compute offset so line doesn't jump: offset = midSegPosition - mousePosition
+		const svgPos = getSVGPoint(e);
+		const mouseVal = constraint === 'x' ? svgPos.x : svgPos.y;
+		const offset = midSegVal - mouseVal;
+
+		draggingDFDSegment = { flowId, constraint, offset };
 	}
 
 	function handleDFDSegmentDrag(e: MouseEvent) {
@@ -1246,9 +1327,11 @@
 		const wp = { ...flow.waypoints[0] };
 
 		if (draggingDFDSegment.constraint === 'x') {
-			wp.x = diagram.showGrid ? Math.round(svgPos.x / 20) * 20 : svgPos.x;
+			const raw = svgPos.x + draggingDFDSegment.offset;
+			wp.x = diagram.showGrid ? Math.round(raw / 20) * 20 : raw;
 		} else {
-			wp.y = diagram.showGrid ? Math.round(svgPos.y / 20) * 20 : svgPos.y;
+			const raw = svgPos.y + draggingDFDSegment.offset;
+			wp.y = diagram.showGrid ? Math.round(raw / 20) * 20 : raw;
 		}
 
 		diagram.updateDFDFlow(flow.id, { waypoints: [wp] });
@@ -1441,6 +1524,21 @@
 							break;
 						}
 					}
+				} else if (diagram.diagramType === 'context') {
+					const PAD = 15; // expand hit area so edge/corner drops register
+					for (const node of diagram.dfdNodes) {
+						if (node.id === draggingConnection.fromNodeId) continue;
+						const rect = getDFDNodeRect(node);
+						if (
+							svgPos.x >= rect.x - PAD &&
+							svgPos.x <= rect.x + rect.w + PAD &&
+							svgPos.y >= rect.y - PAD &&
+							svgPos.y <= rect.y + rect.h + PAD
+						) {
+							hoveredNodeId = node.id;
+							break;
+						}
+					}
 				}
 			} else if (panning) {
 				diagram.setPan(
@@ -1454,6 +1552,15 @@
 				handleResizeMove(e);
 			} else if (draggingWaypoint) {
 				handleWaypointDrag(e);
+			} else if (draggingDFDLabel) {
+				const svgPos = screenToSvg(e.clientX, e.clientY);
+				const flow = diagram.dfdFlows.find(f => f.id === draggingDFDLabel!.flowId);
+				if (flow) {
+					flow.labelPosition = {
+						x: svgPos.x + draggingDFDLabel!.offsetX,
+						y: svgPos.y + draggingDFDLabel!.offsetY
+					};
+				}
 			} else if (draggingDFDSegment) {
 				handleDFDSegmentDrag(e);
 			} else if (pendingDFDLineDrag) {
@@ -1491,8 +1598,74 @@
 	function handleMouseUp(e: MouseEvent) {
 		if (e.button === 0) {
 			// Handle connection drop
-			if (draggingConnection && hoveredNodeId && diagram.diagramType === 'flowchart') {
-				diagram.addFlowEdge('', draggingConnection.fromNodeId, hoveredNodeId);
+			if (draggingConnection && hoveredNodeId) {
+				if (diagram.diagramType === 'flowchart') {
+					diagram.addFlowEdge('', draggingConnection.fromNodeId, hoveredNodeId);
+				} else if (diagram.diagramType === 'context') {
+					const targetNode = diagram.dfdNodes.find(n => n.id === hoveredNodeId);
+					const fromNode = diagram.dfdNodes.find(n => n.id === draggingConnection.fromNodeId);
+					const mousePos = screenToSvg(e.clientX, e.clientY);
+					const fSide = draggingConnection.fromSide;
+					const isH = fSide === 'left' || fSide === 'right';
+
+					// Compute exit point (matches temp line GAP=20)
+					const GAP = 20;
+					const sx = draggingConnection.startX, sy = draggingConnection.startY;
+					const exitX = fSide === 'right' ? sx + GAP : fSide === 'left' ? sx - GAP : sx;
+					const exitY = fSide === 'bottom' ? sy + GAP : fSide === 'top' ? sy - GAP : sy;
+
+					// Compute toSide from closest edge of target node to mouse
+					let toSide: 'top' | 'right' | 'bottom' | 'left' = 'left';
+					let toPortOffset: number | undefined;
+					if (targetNode) {
+						const tRect = getDFDNodeRect(targetNode);
+						const dTop = Math.abs(mousePos.y - tRect.y);
+						const dBottom = Math.abs(mousePos.y - (tRect.y + tRect.h));
+						const dLeft = Math.abs(mousePos.x - tRect.x);
+						const dRight = Math.abs(mousePos.x - (tRect.x + tRect.w));
+						const minD = Math.min(dTop, dBottom, dLeft, dRight);
+						if (minD === dTop) toSide = 'top';
+						else if (minD === dBottom) toSide = 'bottom';
+						else if (minD === dLeft) toSide = 'left';
+						else toSide = 'right';
+						// Port offset from node center along the side edge
+						if (toSide === 'top' || toSide === 'bottom') {
+							toPortOffset = mousePos.x - targetNode.position.x;
+						} else {
+							toPortOffset = mousePos.y - targetNode.position.y;
+						}
+					}
+
+					// Compute fromPortOffset from drag start position
+					let fromPortOffset: number | undefined;
+					if (fromNode) {
+						if (fSide === 'top' || fSide === 'bottom') {
+							fromPortOffset = sx - fromNode.position.x;
+						} else {
+							fromPortOffset = sy - fromNode.position.y;
+						}
+					}
+
+					// Auto-offset to prevent overlap with existing flows between same node pair
+					const SPACING = 20;
+					const pairFlows = diagram.dfdFlows.filter(f =>
+						(f.fromNodeId === draggingConnection!.fromNodeId && f.toNodeId === hoveredNodeId) ||
+						(f.fromNodeId === hoveredNodeId && f.toNodeId === draggingConnection!.fromNodeId)
+					);
+					const offset = pairFlows.length > 0
+						? (isH ? (fSide === 'right' ? 1 : -1) : (fSide === 'bottom' ? 1 : -1)) * SPACING * pairFlows.length
+						: 0;
+
+					// Store waypoint so flow route matches temp line midpoint routing
+					// buildRoute uses: sH → wp.x for vertical segment, !sH → wp.y for horizontal segment
+					const midX = (exitX + mousePos.x) / 2;
+					const midY = (exitY + mousePos.y) / 2;
+					const wp = isH
+						? { x: midX + offset, y: 0 }
+						: { x: 0, y: midY + offset };
+
+					diagram.addDFDFlow('', draggingConnection.fromNodeId, hoveredNodeId, fSide, toSide, fromPortOffset, toPortOffset, [wp]);
+				}
 			}
 			// Handle resize end
 			handleResizeEnd();
@@ -1505,6 +1678,11 @@
 			if (draggingDFDSegment) {
 				diagram.pushHistory('Move DFD segment');
 				draggingDFDSegment = null;
+			}
+			// Handle DFD label drag end
+			if (draggingDFDLabel) {
+				diagram.pushHistory('Move DFD label');
+				draggingDFDLabel = null;
 			}
 			// Clear pending DFD line drag (was just a click, not a drag)
 			pendingDFDLineDrag = null;
@@ -2048,28 +2226,27 @@
 				</g>
 			{/each}
 
-			<!-- Temporary connection line while dragging -->
+			<!-- Temporary connection line while dragging — orthogonal -->
 			{#if draggingConnection}
-				{@const fromNode = diagram.flowNodes.find(n => n.id === draggingConnection!.fromNodeId)}
-				{#if fromNode}
-					{@const W = 140}
-					{@const H = 60}
-					{@const startPos = draggingConnection!.fromSide === 'top' ? { x: fromNode.position.x, y: fromNode.position.y - H / 2 } :
-						draggingConnection!.fromSide === 'bottom' ? { x: fromNode.position.x, y: fromNode.position.y + H / 2 } :
-						draggingConnection!.fromSide === 'left' ? { x: fromNode.position.x - W / 2, y: fromNode.position.y } :
-						{ x: fromNode.position.x + W / 2, y: fromNode.position.y }}
-					<line
-						x1={startPos.x}
-						y1={startPos.y}
-						x2={draggingConnection!.currentX}
-						y2={draggingConnection!.currentY}
-						stroke={hoveredNodeId ? '#10b981' : '#3b82f6'}
-						stroke-width="2"
-						stroke-dasharray="6 4"
-						opacity="0.7"
-						marker-end={hoveredNodeId ? 'url(#arrow-temp-valid)' : 'url(#arrow-temp)'}
-					/>
-				{/if}
+				{@const s = { x: draggingConnection!.startX, y: draggingConnection!.startY }}
+				{@const e = { x: draggingConnection!.currentX, y: draggingConnection!.currentY }}
+				{@const side = draggingConnection!.fromSide}
+				{@const GAP = 20}
+				{@const exitPt = side === 'top' ? { x: s.x, y: s.y - GAP } :
+					side === 'bottom' ? { x: s.x, y: s.y + GAP } :
+					side === 'left' ? { x: s.x - GAP, y: s.y } :
+					{ x: s.x + GAP, y: s.y }}
+				{@const isH = side === 'left' || side === 'right'}
+				{@const corner = isH ? { x: exitPt.x, y: e.y } : { x: e.x, y: exitPt.y }}
+				<path
+					d="M{s.x},{s.y} L{exitPt.x},{exitPt.y} L{corner.x},{corner.y} L{e.x},{e.y}"
+					stroke={hoveredNodeId ? '#10b981' : '#3b82f6'}
+					stroke-width="2"
+					stroke-dasharray="6 4"
+					fill="none"
+					opacity="0.7"
+					marker-end={hoveredNodeId ? 'url(#arrow-temp-valid)' : 'url(#arrow-temp)'}
+				/>
 			{/if}
 
 		{:else if diagram.diagramType === 'context'}
@@ -2087,22 +2264,50 @@
 						animateIn={diagram.newDFDFlowIds.has(flow.id)}
 						dying={diagram.dyingDFDFlowIds.has(flow.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(flow.id); }}
+						ondblclick={() => startEditingDFDFlowLabel(flow.id)}
 						onlinemousedown={(e) => handleDFDLineMouseDown(flow.id, e)}
+						onlabelmousedown={(e) => {
+							if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+							const svgPos = screenToSvg(e.clientX, e.clientY);
+							const lp = flow.labelPosition;
+							draggingDFDLabel = {
+								flowId: flow.id,
+								offsetX: lp ? lp.x - svgPos.x : 0,
+								offsetY: lp ? lp.y - svgPos.y : 0
+							};
+						}}
 					/>
 				{/if}
 			{/each}
 
 			<!-- DFD nodes (on top — border covers arrow tip, arrow body visible outside) -->
 			{#each diagram.dfdNodes as node (node.id)}
-				<DFDNodeShape
-					{node}
-					selected={diagram.selectedNodeIdSet.has(node.id)}
-					onmousedown={(e) => handleEntityMouseDown(node.id, e)}
-					onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
-					ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
-					oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
-					animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
-				/>
+				{@const dfdRect = getDFDNodeRect(node)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<g
+					onmouseenter={() => hoveredDFDNodeId = node.id}
+					onmouseleave={() => hoveredDFDNodeId = null}
+				>
+					<DFDNodeShape
+						{node}
+						selected={diagram.selectedNodeIdSet.has(node.id)}
+						onmousedown={(e) => handleEntityMouseDown(node.id, e)}
+						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
+						ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
+						oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
+					/>
+
+					<!-- Connection zone (show on hover — drag from anywhere on edge) -->
+					{#if hoveredDFDNodeId === node.id && !dragging && !panning && !draggingConnection && !resizing && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+						<DFDConnectionZone
+							{node}
+							W={dfdRect.w}
+							H={dfdRect.h}
+							onStartConnection={handleStartConnection}
+						/>
+					{/if}
+				</g>
 			{/each}
 
 			<!-- Dying DFD nodes (fade-out ghosts) -->
@@ -2161,6 +2366,32 @@
 					>{node.name}</text>
 				</g>
 			{/each}
+
+			<!-- Temporary connection line while dragging (DFD) — orthogonal -->
+			{#if draggingConnection}
+				{@const s = { x: draggingConnection!.startX, y: draggingConnection!.startY }}
+				{@const e = { x: draggingConnection!.currentX, y: draggingConnection!.currentY }}
+				{@const side = draggingConnection!.fromSide}
+				{@const sH = side === 'left' || side === 'right'}
+				{@const GAP = 20}
+				{@const exitPt = side === 'top' ? { x: s.x, y: s.y - GAP } :
+					side === 'bottom' ? { x: s.x, y: s.y + GAP } :
+					side === 'left' ? { x: s.x - GAP, y: s.y } :
+					{ x: s.x + GAP, y: s.y }}
+				{@const midX = (exitPt.x + e.x) / 2}
+				{@const midY = (exitPt.y + e.y) / 2}
+				{@const p2 = sH ? { x: midX, y: exitPt.y } : { x: exitPt.x, y: midY }}
+				{@const p3 = sH ? { x: midX, y: e.y } : { x: e.x, y: midY }}
+				<path
+					d="M{s.x},{s.y} L{exitPt.x},{exitPt.y} L{p2.x},{p2.y} L{p3.x},{p3.y} L{e.x},{e.y}"
+					stroke={hoveredNodeId ? '#10b981' : '#3b82f6'}
+					stroke-width="2"
+					stroke-dasharray="6 4"
+					fill="none"
+					opacity="0.7"
+					marker-end={hoveredNodeId ? 'url(#arrow-temp-valid)' : 'url(#arrow-temp)'}
+				/>
+			{/if}
 		{/if}
 
 		<!-- Data flow particles (all diagram types) -->

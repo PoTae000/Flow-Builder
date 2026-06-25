@@ -18,10 +18,17 @@ export interface DFDNode {
 	color?: string;
 }
 
+export type DFDSide = 'top' | 'right' | 'bottom' | 'left';
+
 export interface DFDFlow {
 	id: string;
 	label: string;
 	fromNodeId: string;
 	toNodeId: string;
+	fromSide?: DFDSide;
+	toSide?: DFDSide;
+	fromPortOffset?: number; // offset from center along the side edge
+	toPortOffset?: number;
 	waypoints?: Position[];
+	labelPosition?: Position; // user-placed label position (SVG coords)
 }

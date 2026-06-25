@@ -7,9 +7,21 @@
 	let nodeName = $state('');
 	let nodeType = $state<DFDNodeType>('process');
 	let processNumber = $state('');
-	let flowLabel = $state('');
-	let flowFrom = $state('');
-	let flowTo = $state('');
+	let storeNumber = $state('');
+
+	// Selected node for editing
+	const selectedDFDNode = $derived(
+		diagram.selectedNodeIds.length === 1
+			? diagram.dfdNodes.find(n => n.id === diagram.selectedNodeIds[0]) ?? null
+			: null
+	);
+
+	// Selected flow for editing
+	const selectedDFDFlow = $derived(
+		diagram.selectedEdgeId
+			? diagram.dfdFlows.find(f => f.id === diagram.selectedEdgeId) ?? null
+			: null
+	);
 
 	const MAX_NAME = 100;
 
@@ -20,18 +32,14 @@
 		if (processNumber.trim() && nodeType === 'process') {
 			diagram.updateDFDNode(node.id, { processNumber: processNumber.trim() });
 		}
+		if (storeNumber.trim() && nodeType === 'data-store') {
+			diagram.updateDFDNode(node.id, { storeNumber: storeNumber.trim() });
+		}
 		nodeName = '';
 		processNumber = '';
+		storeNumber = '';
 	}
 
-	function addFlow() {
-		const label = flowLabel.trim();
-		if (!label || !flowFrom || !flowTo || flowFrom === flowTo) return;
-		diagram.addDFDFlow(label, flowFrom, flowTo);
-		flowLabel = '';
-		flowFrom = '';
-		flowTo = '';
-	}
 </script>
 
 <div class="flex flex-col gap-5">
@@ -65,6 +73,15 @@
 				class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] hover:border-[var(--ui-text-muted)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none animate-slide-up"
 			/>
 		{/if}
+		{#if nodeType === 'data-store'}
+			<input
+				type="text"
+				bind:value={storeNumber}
+				placeholder="Store ID (e.g. D1)..."
+				maxlength={10}
+				class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] hover:border-[var(--ui-text-muted)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none animate-slide-up"
+			/>
+		{/if}
 		<button
 			onclick={addNode}
 			disabled={!nodeName.trim()}
@@ -92,6 +109,9 @@
 						{#if node.processNumber}
 							<span class="text-xs font-bold text-[var(--ui-text-secondary)]">{node.processNumber}</span>
 						{/if}
+						{#if node.storeNumber}
+							<span class="text-xs font-bold text-[var(--ui-text-secondary)]">{node.storeNumber}</span>
+						{/if}
 						<span class="truncate text-[var(--ui-text)]">{node.name}</span>
 					</div>
 					<button
@@ -106,47 +126,83 @@
 		</div>
 	</div>
 
-	<div class="border-t border-[var(--ui-border)]"></div>
-
-	<!-- Add Flow -->
-	<div class="flex flex-col gap-2">
-		<span class="text-xs font-normal text-[var(--ui-text-muted)] uppercase tracking-wider">เพิ่ม Data Flow</span>
-		<input
-			type="text"
-			bind:value={flowLabel}
-			placeholder="Flow label..."
-			maxlength={MAX_NAME}
-			class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] hover:border-[var(--ui-text-muted)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
-		/>
-		<div class="flex gap-2">
+	<!-- Edit Selected Node -->
+	{#if selectedDFDNode}
+		<div class="flex flex-col gap-2 rounded-lg border border-[var(--ui-text-secondary)]/30 bg-[var(--ui-bg-tertiary)] p-3">
+			<span class="text-xs font-normal text-[var(--ui-text-secondary)] uppercase tracking-wider">แก้ไข Node</span>
+			<input
+				type="text"
+				value={selectedDFDNode.name}
+				oninput={(e) => diagram.updateDFDNode(selectedDFDNode.id, { name: (e.target as HTMLInputElement).value })}
+				placeholder="ชื่อ Node..."
+				maxlength={MAX_NAME}
+				class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
+			/>
 			<select
-				bind:value={flowFrom}
-				class="flex-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-2 py-2 text-sm text-[var(--ui-text)]"
+				value={selectedDFDNode.type}
+				onchange={(e) => diagram.updateDFDNode(selectedDFDNode.id, { type: (e.target as HTMLSelectElement).value as DFDNodeType })}
+				class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-2 py-2 text-sm text-[var(--ui-text)]"
 			>
-				<option value="">From...</option>
-				{#each diagram.dfdNodes as node}
-					<option value={node.id}>{node.name}</option>
+				{#each DFD_NODE_TYPE_OPTIONS as opt}
+					<option value={opt.value}>{opt.label}</option>
 				{/each}
 			</select>
-			<span class="flex items-center text-[var(--ui-text-muted)]">&rarr;</span>
-			<select
-				bind:value={flowTo}
-				class="flex-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-2 py-2 text-sm text-[var(--ui-text)]"
-			>
-				<option value="">To...</option>
-				{#each diagram.dfdNodes as node}
-					<option value={node.id}>{node.name}</option>
-				{/each}
-			</select>
+			{#if selectedDFDNode.type === 'process'}
+				<input
+					type="text"
+					value={selectedDFDNode.processNumber || ''}
+					oninput={(e) => diagram.updateDFDNode(selectedDFDNode.id, { processNumber: (e.target as HTMLInputElement).value })}
+					placeholder="Process number (e.g. 1.0)..."
+					maxlength={10}
+					class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
+				/>
+			{/if}
+			{#if selectedDFDNode.type === 'data-store'}
+				<input
+					type="text"
+					value={selectedDFDNode.storeNumber || ''}
+					oninput={(e) => diagram.updateDFDNode(selectedDFDNode.id, { storeNumber: (e.target as HTMLInputElement).value })}
+					placeholder="Store ID (e.g. D1)..."
+					maxlength={10}
+					class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
+				/>
+			{/if}
+			<div class="flex gap-2">
+				<input
+					type="color"
+					value={selectedDFDNode.color || '#ffffff'}
+					oninput={(e) => diagram.updateDFDNode(selectedDFDNode.id, { color: (e.target as HTMLInputElement).value })}
+					class="h-9 w-9 shrink-0 cursor-pointer rounded border border-[var(--ui-border)]"
+				/>
+				{#if selectedDFDNode.color}
+					<button
+						onclick={() => diagram.updateDFDNode(selectedDFDNode.id, { color: undefined })}
+						class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-1.5 text-xs text-[var(--ui-text-muted)] hover:border-[var(--ui-text-muted)]"
+					>
+						ล้างสี
+					</button>
+				{/if}
+			</div>
 		</div>
-		<button
-			onclick={addFlow}
-			disabled={!flowLabel.trim() || !flowFrom || !flowTo || flowFrom === flowTo}
-			class="w-full rounded-lg bg-[var(--ui-accent)] px-4 py-2 text-sm font-normal text-[var(--ui-accent-text)] shadow-sm transition hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			เพิ่ม Flow
-		</button>
-	</div>
+	{/if}
+
+	<!-- Edit Selected Flow -->
+	{#if selectedDFDFlow}
+		{@const fromN = diagram.dfdNodes.find(n => n.id === selectedDFDFlow.fromNodeId)}
+		{@const toN = diagram.dfdNodes.find(n => n.id === selectedDFDFlow.toNodeId)}
+		<div class="flex flex-col gap-2 rounded-lg border border-[var(--ui-text-secondary)]/30 bg-[var(--ui-bg-tertiary)] p-3">
+			<span class="text-xs font-normal text-[var(--ui-text-secondary)] uppercase tracking-wider">แก้ไข Flow</span>
+			<span class="text-xs text-[var(--ui-text-muted)]">{fromN?.name ?? '?'} → {toN?.name ?? '?'}</span>
+			<input
+				type="text"
+				value={selectedDFDFlow.label}
+				oninput={(e) => diagram.updateDFDFlow(selectedDFDFlow.id, { label: (e.target as HTMLInputElement).value })}
+				placeholder="Label..."
+				maxlength={MAX_NAME}
+				class="w-full rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-sm text-[var(--ui-text)] shadow-sm transition placeholder:text-[var(--ui-text-placeholder)] focus:border-[var(--ui-text-secondary)] focus:ring-2 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"
+			/>
+		</div>
+	{/if}
 
 	<!-- Flow List -->
 	{#if diagram.dfdFlows.length > 0}

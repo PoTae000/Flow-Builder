@@ -1,3 +1,5 @@
+import type { DiagramType } from '$lib/types/diagram';
+
 export interface Suggestion {
 	text: string;
 	detail: string;
@@ -15,8 +17,8 @@ class SuggestionState {
 		return !this.loading && Date.now() - this.lastFetchedAt >= COOLDOWN_MS;
 	}
 
-	async fetchSuggestions(entities: any[], relationships: any[], _retry = 0) {
-		if (!this.canFetch || entities.length < 3) return;
+	async fetchSuggestions(payload: Record<string, any>, diagramType: DiagramType = 'er', _retry = 0) {
+		if (!this.canFetch) return;
 
 		this.loading = true;
 		this.dismissed = false;
@@ -25,15 +27,14 @@ class SuggestionState {
 			const res = await fetch('/api/suggest-improvement', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ entities, relationships })
+				body: JSON.stringify({ ...payload, diagramType })
 			});
 
 			if (res.status === 429 && _retry < 2) {
-				// Exponential backoff: 5s, 15s
 				const delay = _retry === 0 ? 5000 : 15000;
 				this.loading = false;
 				await new Promise((r) => setTimeout(r, delay));
-				return this.fetchSuggestions(entities, relationships, _retry + 1);
+				return this.fetchSuggestions(payload, diagramType, _retry + 1);
 			}
 
 			if (!res.ok) {
@@ -45,7 +46,6 @@ class SuggestionState {
 			if (data.suggestions && Array.isArray(data.suggestions)) {
 				this.suggestions = data.suggestions.slice(0, 3);
 			} else {
-				// Try to parse if response is wrapped
 				try {
 					const parsed = typeof data === 'string' ? JSON.parse(data) : data;
 					if (parsed.suggestions) {

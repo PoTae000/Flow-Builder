@@ -37,7 +37,7 @@ Node types: "start-end", "process", "decision", "input-output", "connector", "do
       "label": "ชื่อสั้นๆ ของข้อแนะนำ",
       "description": "คำอธิบายสั้นว่าทำไมควรเพิ่ม",
       "actions": [
-        { "op": "add-dfd-node", "name": "NodeName", "type": "process"|"external-entity"|"data-store", "processNumber": "1.0" },
+        { "op": "add-dfd-node", "name": "NodeName", "type": "process"|"external-entity"|"data-store", "processNumber": "1.0", "storeNumber": "D1" },
         { "op": "add-dfd-flow", "label": "flow label", "fromNode": "ExistingNode", "toNode": "NewNode" }
       ]
     }
@@ -95,6 +95,7 @@ function buildContext(body: any): string {
 		for (const n of body.dfdNodes || []) {
 			ctx += `- Node: ${n.name} [${n.type}]`;
 			if (n.processNumber) ctx += ` #${n.processNumber}`;
+			if (n.storeNumber) ctx += ` ${n.storeNumber}`;
 			ctx += '\n';
 		}
 		for (const f of body.dfdFlows || []) {

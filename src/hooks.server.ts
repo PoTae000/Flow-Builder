@@ -25,7 +25,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 	response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 	// Security headers
 	response.headers.set('X-Content-Type-Options', 'nosniff');
-	response.headers.set('X-Frame-Options', 'DENY');
+	// Allow embedding from HyperTech desktop
+	// X-Frame-Options removed — using CSP frame-ancestors instead
 	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 	response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 	response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -43,7 +44,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 		"img-src 'self' data: blob: *.googleusercontent.com",
 		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com wss://signaling.yjs.dev wss://*.onrender.com",
 		"frame-src accounts.google.com",
-		"object-src 'none'"
+		"object-src 'none'",
+		"frame-ancestors 'self' https://hypertech.suepskun.online"
 	].join('; '));
 
 	return response;

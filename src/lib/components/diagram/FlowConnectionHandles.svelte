@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { FlowNode } from '$lib/types/flowchart';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let {
@@ -8,7 +7,7 @@
 		H = 60,
 		onStartConnection
 	}: {
-		node: FlowNode;
+		node: { id: string; position: { x: number; y: number } };
 		W?: number;
 		H?: number;
 		onStartConnection: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', clientX: number, clientY: number) => void;

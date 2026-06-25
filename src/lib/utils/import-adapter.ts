@@ -250,6 +250,7 @@ export interface AiParsedDFD {
 		name: string;
 		type: DFDNodeType;
 		processNumber?: string;
+		storeNumber?: string;
 	}>;
 	dfdFlows: Array<{
 		label: string;
@@ -278,7 +279,8 @@ export function convertAiDFDToDiagram(data: AiParsedDFD): ImportedDFDData {
 			name: node.name,
 			type: node.type,
 			position: { x: 0, y: 0 }, // will be set by autoLayout
-			processNumber: node.processNumber
+			processNumber: node.processNumber,
+			storeNumber: node.storeNumber
 		});
 	}
 

@@ -42,34 +42,50 @@
 	style="cursor: grab;"
 >
 	{#if node.type === 'process'}
-		<!-- Circle for process -->
+		<!-- Gane-Sarson rectangle for process -->
+		{@const W = 140}
+		{@const headerH = node.processNumber ? 28 : 0}
+		{@const bodyH = 50}
+		{@const H = headerH + bodyH}
 		{#if selected}
-			<circle cx={cx} cy={cy} r="42" fill="none" stroke={colors.selectedStroke} stroke-width="2.5" opacity="0.5" />
+			<rect x={cx - W / 2 - 2} y={cy - H / 2 - 2} width={W + 4} height={H + 4} rx="4" fill="none" stroke={colors.selectedStroke} stroke-width="2.5" opacity="0.5" />
 		{/if}
-		<circle
-			{cx} {cy}
-			r="40"
+		<rect
+			x={cx - W / 2}
+			y={cy - H / 2}
+			width={W}
+			height={H}
+			rx="3"
 			fill={node.color || colors.entityFill}
 			stroke={selected ? colors.selectedStroke : colors.entityStroke}
 			stroke-width="1.5"
 		/>
-		<!-- Process number -->
+		<!-- Process number header -->
 		{#if node.processNumber}
+			<line
+				x1={cx - W / 2}
+				y1={cy - H / 2 + headerH}
+				x2={cx + W / 2}
+				y2={cy - H / 2 + headerH}
+				stroke={selected ? colors.selectedStroke : colors.entityStroke}
+				stroke-width="1.5"
+			/>
 			<text
 				x={cx}
-				y={cy - 12}
+				y={cy - H / 2 + headerH / 2}
 				text-anchor="middle"
 				dominant-baseline="central"
 				fill={colors.pkColor}
-				font-size="11"
+				font-size="12"
 				font-weight="700"
 			>
 				{node.processNumber}
 			</text>
 		{/if}
+		<!-- Process name -->
 		<text
 			x={cx}
-			y={node.processNumber ? cy + 6 : cy}
+			y={cy - H / 2 + headerH + bodyH / 2}
 			text-anchor="middle"
 			dominant-baseline="central"
 			fill={colors.entityHeaderText}
@@ -108,16 +124,15 @@
 		</text>
 
 	{:else if node.type === 'data-store'}
-		<!-- Open-ended rectangle for data store -->
+		<!-- Open-ended rectangle for data store with ID column -->
 		{@const W = 140}
 		{@const H = 40}
+		{@const idColW = 36}
+		{@const strokeColor = selected ? colors.selectedStroke : colors.entityStroke}
 		{#if selected}
 			<rect x={cx - W / 2 - 2} y={cy - H / 2 - 2} width={W + 4} height={H + 4} fill="none" stroke={colors.selectedStroke} stroke-width="2.5" opacity="0.5" />
 		{/if}
-		<!-- Top & bottom lines + left line -->
-		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx + W / 2} y2={cy - H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
-		<line x1={cx - W / 2} y1={cy + H / 2} x2={cx + W / 2} y2={cy + H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
-		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx - W / 2} y2={cy + H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
+		<!-- Fill background -->
 		<rect
 			x={cx - W / 2}
 			y={cy - H / 2}
@@ -126,12 +141,29 @@
 			fill={node.color || colors.entityFill}
 			stroke="none"
 		/>
-		<!-- Redraw borders on top of fill -->
-		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx + W / 2} y2={cy - H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
-		<line x1={cx - W / 2} y1={cy + H / 2} x2={cx + W / 2} y2={cy + H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
-		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx - W / 2} y2={cy + H / 2} stroke={selected ? colors.selectedStroke : colors.entityStroke} stroke-width="1.5" />
+		<!-- Top line -->
+		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx + W / 2} y2={cy - H / 2} stroke={strokeColor} stroke-width="1.5" />
+		<!-- Bottom line -->
+		<line x1={cx - W / 2} y1={cy + H / 2} x2={cx + W / 2} y2={cy + H / 2} stroke={strokeColor} stroke-width="1.5" />
+		<!-- Left vertical line -->
+		<line x1={cx - W / 2} y1={cy - H / 2} x2={cx - W / 2} y2={cy + H / 2} stroke={strokeColor} stroke-width="1.5" />
+		<!-- Divider between ID column and name column -->
+		<line x1={cx - W / 2 + idColW} y1={cy - H / 2} x2={cx - W / 2 + idColW} y2={cy + H / 2} stroke={strokeColor} stroke-width="1.5" />
+		<!-- Store number (ID column) -->
 		<text
-			x={cx}
+			x={cx - W / 2 + idColW / 2}
+			y={cy}
+			text-anchor="middle"
+			dominant-baseline="central"
+			fill={colors.pkColor}
+			font-size="12"
+			font-weight="700"
+		>
+			{node.storeNumber || ''}
+		</text>
+		<!-- Store name (main column) -->
+		<text
+			x={cx - W / 2 + idColW + (W - idColW) / 2}
 			y={cy}
 			text-anchor="middle"
 			dominant-baseline="central"

@@ -1,6 +1,7 @@
 /**
  * File System Access API utilities for auto-saving diagrams
  * Supported browsers: Chrome 86+, Edge 86+
+ * Falls back to blob download when running inside a cross-origin iframe
  */
 
 export interface DiagramFileHandle {
@@ -10,10 +11,68 @@ export interface DiagramFileHandle {
 }
 
 /**
- * Check if File System Access API is supported
+ * Check if running inside a cross-origin iframe where File System Access API is blocked
+ */
+export function isInIframe(): boolean {
+	try {
+		return window.self !== window.top;
+	} catch {
+		// If accessing window.top throws (cross-origin), we're in an iframe
+		return true;
+	}
+}
+
+/**
+ * Check if File System Access API is supported and usable
+ * Returns false in cross-origin iframes where the API is blocked
  */
 export function isFileSystemSupported(): boolean {
+	if (isInIframe()) return false;
 	return 'showSaveFilePicker' in window && 'showOpenFilePicker' in window;
+}
+
+/**
+ * Download data as a file using blob + anchor fallback (works in iframes with allow-downloads)
+ */
+export function downloadAsFile(data: object, filename: string = 'diagram.erd'): void {
+	const json = JSON.stringify(data, null, 2);
+	const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = filename;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
+}
+
+/**
+ * Open a file using input[type=file] fallback (works in iframes)
+ */
+export function openFileViaInput(): Promise<{ data: object; fileName: string } | null> {
+	return new Promise((resolve, reject) => {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.erd,.json';
+		input.onchange = () => {
+			const file = input.files?.[0];
+			if (!file) return resolve(null);
+			if (file.size > 10 * 1024 * 1024) return reject(new Error('File too large (max 10MB)'));
+			const reader = new FileReader();
+			reader.onload = () => {
+				try {
+					const data = JSON.parse(reader.result as string);
+					resolve({ data, fileName: file.name });
+				} catch {
+					reject(new Error('Invalid JSON file'));
+				}
+			};
+			reader.onerror = () => reject(reader.error);
+			reader.readAsText(file);
+		};
+		input.click();
+	});
 }
 
 /**

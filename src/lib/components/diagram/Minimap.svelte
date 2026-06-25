@@ -10,21 +10,49 @@
 
 	let draggingMinimap = $state(false);
 
+	// Get all nodes based on diagram type
+	const allNodes = $derived.by(() => {
+		if (diagram.diagramType === 'flowchart') {
+			return diagram.flowNodes.map(n => ({
+				id: n.id,
+				x: n.position.x,
+				y: n.position.y,
+				w: n.type === 'connector' ? 50 : 140,
+				h: n.type === 'connector' ? 50 : 60,
+				color: n.color || null
+			}));
+		}
+		if (diagram.diagramType === 'context') {
+			return diagram.dfdNodes.map(n => ({
+				id: n.id,
+				x: n.position.x,
+				y: n.position.y,
+				w: n.type === 'external-entity' ? 120 : 140,
+				h: n.type === 'data-store' ? 40 : n.type === 'process' ? (n.processNumber ? 78 : 50) : 50,
+				color: n.color || null
+			}));
+		}
+		return diagram.entities.map(e => ({
+			id: e.id,
+			x: e.position.x,
+			y: e.position.y,
+			w: EST_ENTITY_W,
+			h: EST_ENTITY_H,
+			color: e.color || null
+		}));
+	});
+
 	const bounds = $derived.by(() => {
-		const entities = diagram.entities;
-		if (entities.length === 0) {
+		if (allNodes.length === 0) {
 			return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
 		}
 		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-		for (const e of entities) {
-			const x = e.position.x;
-			const y = e.position.y;
-			if (x < minX) minX = x;
-			if (y < minY) minY = y;
-			if (x + EST_ENTITY_W > maxX) maxX = x + EST_ENTITY_W;
-			if (y + EST_ENTITY_H > maxY) maxY = y + EST_ENTITY_H;
+		for (const n of allNodes) {
+			if (n.x < minX) minX = n.x;
+			if (n.y < minY) minY = n.y;
+			if (n.x + n.w > maxX) maxX = n.x + n.w;
+			if (n.y + n.h > maxY) maxY = n.y + n.h;
 		}
-		// Add some margin so viewport rect is visible even at edges
 		const mx = (maxX - minX) * 0.2 || 200;
 		const my = (maxY - minY) * 0.2 || 150;
 		return {
@@ -68,7 +96,6 @@
 	const viewportH = $derived(typeof window !== 'undefined' ? window.innerHeight : 800);
 
 	const viewportRect = $derived.by(() => {
-		// The diagram canvas shows area from (-panX/zoom, -panY/zoom) with size (viewportW/zoom, viewportH/zoom)
 		const vx = -diagram.panX / diagram.zoom;
 		const vy = -diagram.panY / diagram.zoom;
 		const vw = viewportW / diagram.zoom;
@@ -82,16 +109,16 @@
 		};
 	});
 
-	const entityRects = $derived(
-		diagram.entities.map((e) => {
-			const pos = toMinimap(e.position.x, e.position.y);
+	const nodeRects = $derived(
+		allNodes.map((n) => {
+			const pos = toMinimap(n.x, n.y);
 			return {
-				id: e.id,
+				id: n.id,
 				x: pos.x,
 				y: pos.y,
-				width: EST_ENTITY_W * scale,
-				height: EST_ENTITY_H * scale,
-				color: e.color || null
+				width: n.w * scale,
+				height: n.h * scale,
+				color: n.color
 			};
 		})
 	);
@@ -103,7 +130,6 @@
 		const mx = clientX - rect.left;
 		const my = clientY - rect.top;
 		const diagramPoint = fromMinimap(mx, my);
-		// Center the viewport on this point
 		const newPanX = -(diagramPoint.x - viewportW / (2 * diagram.zoom)) * diagram.zoom;
 		const newPanY = -(diagramPoint.y - viewportH / (2 * diagram.zoom)) * diagram.zoom;
 		if (smooth) {
@@ -119,12 +145,10 @@
 		if (e.button !== 0) return;
 		draggingMinimap = true;
 		const svgEl = e.currentTarget as SVGSVGElement;
-		// First click: smooth transition to clicked point
 		panToMinimapPoint(e.clientX, e.clientY, svgEl, true);
 
 		function handleMousemove(ev: MouseEvent) {
 			if (!draggingMinimap) return;
-			// While dragging: instant (smooth would lag)
 			panToMinimapPoint(ev.clientX, ev.clientY, svgEl, false);
 		}
 
@@ -139,7 +163,7 @@
 	}
 </script>
 
-<div class="absolute bottom-3 right-3 z-10 hidden md:block">
+<div class="minimap absolute bottom-3 right-3 z-10 hidden md:block">
 	<div class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-md">
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<svg
@@ -151,14 +175,14 @@
 			<!-- Background -->
 			<rect width={MINIMAP_W} height={MINIMAP_H} fill={colors.canvasBg} rx="8" />
 
-			<!-- Entities -->
-			{#each entityRects as er (er.id)}
+			<!-- Nodes -->
+			{#each nodeRects as nr (nr.id)}
 				<rect
-					x={er.x}
-					y={er.y}
-					width={Math.max(er.width, 2)}
-					height={Math.max(er.height, 1.5)}
-					fill={er.color || colors.entityHeaderFill}
+					x={nr.x}
+					y={nr.y}
+					width={Math.max(nr.width, 2)}
+					height={Math.max(nr.height, 1.5)}
+					fill={nr.color || colors.entityHeaderFill}
 					stroke={colors.entityStroke}
 					stroke-width="0.5"
 					rx="1"

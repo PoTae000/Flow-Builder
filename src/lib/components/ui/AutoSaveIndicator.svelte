@@ -1,12 +1,39 @@
 <script lang="ts">
 	import { autoSave } from '$lib/stores/auto-save.svelte';
-	import { pickSaveLocation } from '$lib/utils/file-system';
+	import { pickSaveLocation, isInIframe, downloadAsFile } from '$lib/utils/file-system';
+	import { diagram } from '$lib/stores/diagram.svelte';
+
+	const inIframe = isInIframe();
 
 	async function handlePickLocation() {
 		const handle = await pickSaveLocation();
 		if (handle) {
 			autoSave.setFileHandle(handle);
 		}
+	}
+
+	function handleDownload() {
+		const name = diagram.diagramName || 'diagram';
+		const data = {
+			version: '1.0',
+			diagramType: diagram.diagramType,
+			name,
+			entities: diagram.entities,
+			relationships: diagram.relationships,
+			flowNodes: diagram.flowNodes,
+			flowEdges: diagram.flowEdges,
+			dfdNodes: diagram.dfdNodes,
+			dfdFlows: diagram.dfdFlows,
+			notation: diagram.notation,
+			showGrid: diagram.showGrid,
+			diagramFont: diagram.diagramFont,
+			customFonts: diagram.customFonts,
+			panX: diagram.panX,
+			panY: diagram.panY,
+			zoom: diagram.zoom,
+			savedAt: new Date().toISOString()
+		};
+		downloadAsFile(data, `${name}.erd`);
 	}
 
 	async function handleSaveNow() {
@@ -41,7 +68,21 @@
 	});
 </script>
 
-{#if autoSave.isSupported}
+{#if inIframe}
+	<!-- In iframe: show download button instead of File System Access API -->
+	<div class="flex items-center gap-2 text-xs">
+		<button
+			onclick={handleDownload}
+			class="flex items-center gap-1.5 rounded px-2 py-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			title="ดาวน์โหลดไฟล์ (Ctrl+S)"
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+			</svg>
+			<span class="hidden sm:inline">ดาวน์โหลด</span>
+		</button>
+	</div>
+{:else if autoSave.isSupported}
 	<div class="flex items-center gap-2 text-xs">
 		{#if !autoSave.fileHandle}
 			<button

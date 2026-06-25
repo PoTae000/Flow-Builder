@@ -81,7 +81,10 @@
       "WebFetch(domain:www.achrafsoltani.com)",
       "WebFetch(domain:louisvandevelde.be)",
       "WebFetch(domain:2igc.cours.free.fr)",
-      "WebFetch(domain:sqlpro.developpez.com)"
+      "WebFetch(domain:sqlpro.developpez.com)",
+      "Bash(git remote set-url:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(xargs git cat-file:*)"
     ]
   }
 }

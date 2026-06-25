@@ -112,7 +112,7 @@
 <!-- Desktop: sidebar with smooth collapse transition -->
 <aside
 	data-onboarding="form-panel"
-	class="hidden lg:flex h-full flex-col border-r border-[var(--ui-border)] bg-[var(--ui-bg)] sidebar-transition"
+	class="hidden lg:flex h-full flex-col border-r border-[var(--ui-border)] bg-[var(--ui-bg)] sidebar-transition form-panel-content"
 	style="width: {collapsed ? '48px' : ''}; min-width: {collapsed ? '48px' : ''};"
 >
 	{#if collapsed}

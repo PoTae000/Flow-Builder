@@ -28,7 +28,7 @@
 	import CollabIndicator from '$lib/components/ui/CollabIndicator.svelte';
 	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 	import { autoSave, registerSession as registerAutoSaveSession } from '$lib/stores/auto-save.svelte';
-	import { pickSaveLocation, writeToFile } from '$lib/utils/file-system';
+	import { pickSaveLocation, writeToFile, isFileSystemSupported, isInIframe, downloadAsFile } from '$lib/utils/file-system';
 	import { suggestions } from '$lib/stores/suggestions.svelte';
 	import SuggestionBar from '$lib/components/ui/SuggestionBar.svelte';
 
@@ -271,23 +271,41 @@
 			if (diagram.selectedNodeIds.length > 0) {
 				const ids = [...diagram.selectedNodeIds];
 				const count = ids.length;
-				const hasRels = diagram.relationships.some(r =>
-					ids.includes(r.entityIds[0]) || ids.includes(r.entityIds[1])
-				);
-				const msg = count === 1
-					? `ลบ "${diagram.entities.find(e => e.id === ids[0])?.name}"${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`
-					: `ลบ ${count} เอนทิตี${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`;
-				dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
-					.then(ok => { if (ok) diagram.removeEntities(ids); });
+				if (diagram.diagramType === 'er') {
+					const hasRels = diagram.relationships.some(r =>
+						ids.includes(r.entityIds[0]) || ids.includes(r.entityIds[1])
+					);
+					const msg = count === 1
+						? `ลบ "${diagram.entities.find(e => e.id === ids[0])?.name}"${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`
+						: `ลบ ${count} เอนทิตี${hasRels ? ' และความสัมพันธ์ที่เกี่ยวข้อง' : ''}?`;
+					dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
+						.then(ok => { if (ok) diagram.removeEntities(ids); });
+				} else if (diagram.diagramType === 'flowchart') {
+					const msg = count === 1 ? `ลบ Node นี้?` : `ลบ ${count} Node?`;
+					dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
+						.then(ok => { if (ok) for (const id of ids) diagram.removeFlowNode(id); });
+				} else if (diagram.diagramType === 'context') {
+					const msg = count === 1 ? `ลบ Node นี้?` : `ลบ ${count} Node?`;
+					dialog.confirm({ title: 'ยืนยันการลบ', message: msg, confirmText: 'ลบ', variant: 'danger' })
+						.then(ok => { if (ok) for (const id of ids) diagram.removeDFDNode(id); });
+				}
 			} else if (diagram.selectedEdgeId) {
-				const relId = diagram.selectedEdgeId;
-				const rel = diagram.relationships.find(r => r.id === relId);
-				dialog.confirm({
-					title: 'ยืนยันการลบ',
-					message: `ลบความสัมพันธ์ "${rel?.name}"?`,
-					confirmText: 'ลบ',
-					variant: 'danger'
-				}).then(ok => { if (ok) diagram.removeRelationship(relId); });
+				const edgeId = diagram.selectedEdgeId;
+				if (diagram.diagramType === 'er') {
+					const rel = diagram.relationships.find(r => r.id === edgeId);
+					dialog.confirm({
+						title: 'ยืนยันการลบ',
+						message: `ลบความสัมพันธ์ "${rel?.name}"?`,
+						confirmText: 'ลบ',
+						variant: 'danger'
+					}).then(ok => { if (ok) diagram.removeRelationship(edgeId); });
+				} else if (diagram.diagramType === 'flowchart') {
+					dialog.confirm({ title: 'ยืนยันการลบ', message: 'ลบ Edge นี้?', confirmText: 'ลบ', variant: 'danger' })
+						.then(ok => { if (ok) diagram.removeFlowEdge(edgeId); });
+				} else if (diagram.diagramType === 'context') {
+					dialog.confirm({ title: 'ยืนยันการลบ', message: 'ลบ Flow นี้?', confirmText: 'ลบ', variant: 'danger' })
+						.then(ok => { if (ok) diagram.removeDFDFlow(edgeId); });
+				}
 			}
 		}
 	}
@@ -447,6 +465,33 @@
 			return;
 		}
 
+		// In iframe or no File System Access API — fall back to blob download
+		if (!isFileSystemSupported()) {
+			const name = diagram.diagramName || 'diagram';
+			const data = {
+				version: '1.0',
+				diagramType: diagram.diagramType,
+				name,
+				entities: diagram.entities,
+				relationships: diagram.relationships,
+				flowNodes: diagram.flowNodes,
+				flowEdges: diagram.flowEdges,
+				dfdNodes: diagram.dfdNodes,
+				dfdFlows: diagram.dfdFlows,
+				notation: diagram.notation,
+				showGrid: diagram.showGrid,
+				diagramFont: diagram.diagramFont,
+				customFonts: diagram.customFonts,
+				panX: diagram.panX,
+				panY: diagram.panY,
+				zoom: diagram.zoom,
+				savedAt: new Date().toISOString()
+			};
+			downloadAsFile(data, `${name}.erd`);
+			toast.success(`ดาวน์โหลดแล้ว: ${name}.erd`);
+			return;
+		}
+
 		// No file handle yet — open save picker
 		const name = diagram.diagramName || 'diagram';
 		const handle = await pickSaveLocation(`${name}.erd`);
@@ -528,21 +573,49 @@
 	// Smart suggestions: auto-fetch after diagram changes (debounced 3s)
 	let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
-		// Track entity/relationship changes
+		// Track changes for all diagram types
 		const entityCount = diagram.entities.length;
 		const relCount = diagram.relationships.length;
-		// Trigger only when: ER mode, >=3 entities, not in collab, cooldown passed, not dismissed
-		if (diagram.diagramType !== 'er' || entityCount < 3 || collab.connected || !suggestions.canFetch) {
+		const flowNodeCount = diagram.flowNodes.length;
+		const flowEdgeCount = diagram.flowEdges.length;
+		const dfdNodeCount = diagram.dfdNodes.length;
+		const dfdFlowCount = diagram.dfdFlows.length;
+		const dt = diagram.diagramType;
+
+		// Check minimum items based on diagram type
+		const hasEnough = dt === 'er' ? entityCount >= 3
+			: dt === 'context' ? dfdNodeCount >= 2
+			: dt === 'flowchart' ? flowNodeCount >= 2
+			: false;
+
+		if (!hasEnough || collab.connected || !suggestions.canFetch) {
 			return;
 		}
 		if (suggestionTimer) clearTimeout(suggestionTimer);
 		suggestionTimer = setTimeout(() => {
 			suggestionTimer = null;
-			if (diagram.diagramType === 'er' && diagram.entities.length >= 3 && !collab.connected && suggestions.canFetch) {
+			if (collab.connected || !suggestions.canFetch) return;
+			if (dt === 'er' && diagram.entities.length >= 3) {
 				suggestions.fetchSuggestions(
-					$state.snapshot(diagram.entities),
-					$state.snapshot(diagram.relationships)
+					{ entities: $state.snapshot(diagram.entities), relationships: $state.snapshot(diagram.relationships) },
+					'er'
 				);
+			} else if (dt === 'context' && diagram.dfdNodes.length >= 2) {
+				const nodes = $state.snapshot(diagram.dfdNodes);
+				const flows = $state.snapshot(diagram.dfdFlows).map(f => {
+					const from = nodes.find(n => n.id === f.fromNodeId);
+					const to = nodes.find(n => n.id === f.toNodeId);
+					return { label: f.label, fromNode: from?.name || '?', toNode: to?.name || '?' };
+				});
+				suggestions.fetchSuggestions({ dfdNodes: nodes, dfdFlows: flows }, 'context');
+			} else if (dt === 'flowchart' && diagram.flowNodes.length >= 2) {
+				const nodes = $state.snapshot(diagram.flowNodes);
+				const edges = $state.snapshot(diagram.flowEdges).map(e => {
+					const from = nodes.find(n => n.id === e.fromNodeId);
+					const to = nodes.find(n => n.id === e.toNodeId);
+					return { label: e.label, fromNode: from?.name || '?', toNode: to?.name || '?' };
+				});
+				suggestions.fetchSuggestions({ flowNodes: nodes, flowEdges: edges }, 'flowchart');
 			}
 		}, 3000);
 		return () => { if (suggestionTimer) { clearTimeout(suggestionTimer); suggestionTimer = null; } };
@@ -589,7 +662,7 @@
 		</div>
 		<div class="flex min-h-0 flex-1">
 			<!-- Skeleton form panel (hidden on mobile) -->
-			<div class="hidden lg:block w-72 shrink-0 border-r border-[var(--ui-border)] bg-[var(--ui-bg)] p-4">
+			<div class="hidden lg:block w-72 lg:w-[300px] 2xl:w-80 shrink-0 border-r border-[var(--ui-border)] bg-[var(--ui-bg)] p-4">
 				<div class="space-y-4">
 					<div class="h-4 w-20 animate-pulse rounded bg-[var(--ui-border)]"></div>
 					<div class="h-8 w-full animate-pulse rounded-lg bg-[var(--ui-border)]"></div>
@@ -670,7 +743,7 @@
 						</div>
 					</div>
 				{:else}
-					<div data-onboarding="toolbar" class="absolute top-3 right-3 z-10 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat}>
+					<div data-onboarding="toolbar" class="toolbar-container absolute top-3 right-3 z-10 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat}>
 						<Toolbar
 							onexport={() => showExportModal = true}
 							onimport={async () => {
@@ -718,7 +791,7 @@
 				{/if}
 
 				<!-- Smart suggestions bar -->
-				{#if !showPresentation && !diagram.viewOnly && diagram.diagramType === 'er' && !showChat}
+				{#if !showPresentation && !diagram.viewOnly && !showChat}
 					<SuggestionBar />
 				{/if}
 
@@ -726,7 +799,7 @@
 				<DiagramCanvas bind:this={canvasComponent} />
 
 				<!-- Minimap -->
-				{#if !showPresentation && diagram.entities.length > 0}
+				{#if !showPresentation && (diagram.entities.length > 0 || diagram.flowNodes.length > 0 || diagram.dfdNodes.length > 0)}
 					<Minimap />
 				{/if}
 
@@ -850,7 +923,7 @@
 {#if showSearch}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="fixed inset-0 z-50 flex items-start justify-center pt-20" onkeydown={() => {}}>
-		<div class="w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl">
+		<div class="search-overlay w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl">
 			<div class="flex items-center gap-2 border-b border-[var(--ui-border)] px-4 py-3">
 				<svg class="h-4 w-4 text-[var(--ui-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
 				<input

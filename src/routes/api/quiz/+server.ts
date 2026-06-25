@@ -93,7 +93,7 @@ You MUST return ONLY valid JSON in this exact format:
     "dfdNodes": [
       { "name": "Customer", "type": "external-entity" },
       { "name": "Process Order", "type": "process", "processNumber": "1.0" },
-      { "name": "Orders DB", "type": "data-store" }
+      { "name": "Orders DB", "type": "data-store", "storeNumber": "D1" }
     ],
     "dfdFlows": [
       { "fromNode": "Customer", "toNode": "Process Order", "label": "Order Request" },

@@ -162,7 +162,7 @@
 			const res = await fetch('/api/quiz', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ difficulty, domain: domain.trim() || undefined })
+				body: JSON.stringify({ difficulty, domain: domain.trim() || undefined, diagramType: diagram.diagramType })
 			});
 
 			if (!res.ok) {
@@ -171,7 +171,7 @@
 			}
 
 			const data: any = await res.json();
-			quizTitle = data.title || 'ER Quiz';
+			quizTitle = data.title || (diagram.diagramType === 'context' ? 'DFD Quiz' : diagram.diagramType === 'flowchart' ? 'Flowchart Quiz' : 'ER Quiz');
 			scenario = data.scenario || '';
 			requirements = data.requirements || [];
 			idealSolution = data.idealSolution || null;
@@ -210,28 +210,48 @@
 		error = '';
 
 		try {
-			const userSolution = {
-				entities: $state.snapshot(diagram.entities).map(e => ({
-					name: e.name,
-					attributes: e.attributes.map(a => {
-						if (a.type === 'primary_key') return `${a.name} (PK)`;
-						if (a.type === 'foreign_key') return `${a.name} (FK)`;
-						return a.name;
-					}),
-					isWeak: e.isWeak
-				})),
-				relationships: $state.snapshot(diagram.relationships).map(r => {
-					const fromEntity = diagram.entityMap.get(r.entityIds[0]);
-					const toEntity = diagram.entityMap.get(r.entityIds[1]);
-					return {
-						name: r.name,
-						from: fromEntity?.name || '?',
-						to: toEntity?.name || '?',
-						cardinalityFrom: r.cardinalities[0],
-						cardinalityTo: r.cardinalities[1]
-					};
-				})
-			};
+			let userSolution: any;
+			if (diagram.diagramType === 'context') {
+				userSolution = {
+					dfdNodes: $state.snapshot(diagram.dfdNodes).map(n => ({
+						name: n.name, type: n.type, processNumber: n.processNumber, storeNumber: n.storeNumber
+					})),
+					dfdFlows: $state.snapshot(diagram.dfdFlows).map(f => {
+						const from = diagram.dfdNodes.find(n => n.id === f.fromNodeId);
+						const to = diagram.dfdNodes.find(n => n.id === f.toNodeId);
+						return { label: f.label, fromNode: from?.name || '?', toNode: to?.name || '?' };
+					})
+				};
+			} else if (diagram.diagramType === 'flowchart') {
+				userSolution = {
+					flowNodes: $state.snapshot(diagram.flowNodes).map(n => ({ name: n.name, type: n.type })),
+					flowEdges: $state.snapshot(diagram.flowEdges).map(e => {
+						const from = diagram.flowNodes.find(n => n.id === e.fromNodeId);
+						const to = diagram.flowNodes.find(n => n.id === e.toNodeId);
+						return { label: e.label, fromNode: from?.name || '?', toNode: to?.name || '?' };
+					})
+				};
+			} else {
+				userSolution = {
+					entities: $state.snapshot(diagram.entities).map(e => ({
+						name: e.name,
+						attributes: e.attributes.map(a => {
+							if (a.type === 'primary_key') return `${a.name} (PK)`;
+							if (a.type === 'foreign_key') return `${a.name} (FK)`;
+							return a.name;
+						}),
+						isWeak: e.isWeak
+					})),
+					relationships: $state.snapshot(diagram.relationships).map(r => {
+						const fromEntity = diagram.entityMap.get(r.entityIds[0]);
+						const toEntity = diagram.entityMap.get(r.entityIds[1]);
+						return {
+							name: r.name, from: fromEntity?.name || '?', to: toEntity?.name || '?',
+							cardinalityFrom: r.cardinalities[0], cardinalityTo: r.cardinalities[1]
+						};
+					})
+				};
+			}
 
 			const res = await fetch('/api/quiz/grade', {
 				method: 'POST',
@@ -240,7 +260,8 @@
 					scenario,
 					requirements,
 					idealSolution,
-					userSolution
+					userSolution,
+					diagramType: diagram.diagramType
 				})
 			});
 

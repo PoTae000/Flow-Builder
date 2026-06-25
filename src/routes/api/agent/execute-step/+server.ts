@@ -28,7 +28,7 @@ function buildSystemPrompt(diagramType: string): string {
 ตอบเป็น JSON:
 {
   "actions": [
-    { "op": "add-dfd-node", "name": "NodeName", "type": "process"|"external-entity"|"data-store", "processNumber": "1.0" },
+    { "op": "add-dfd-node", "name": "NodeName", "type": "process"|"external-entity"|"data-store", "processNumber": "1.0", "storeNumber": "D1" },
     { "op": "add-dfd-flow", "label": "flow label", "fromNode": "NodeA", "toNode": "NodeB" },
     { "op": "remove-dfd-node", "name": "NodeName" },
     { "op": "remove-dfd-flow", "fromNode": "NodeA", "toNode": "NodeB" }
@@ -39,7 +39,8 @@ function buildSystemPrompt(diagramType: string): string {
 - ใช้ภาษาเดียวกับ diagram ที่มีอยู่ (ถ้าว่าง ใช้อังกฤษ)
 - ห้ามสร้าง node ซ้ำชื่อที่มีอยู่แล้ว
 - fromNode/toNode ต้องเป็นชื่อ node ที่มีอยู่แล้วหรือที่เพิ่งสร้างใน actions ชุดนี้
-- process ต้องมี processNumber`;
+- process ต้องมี processNumber
+- data-store ต้องมี storeNumber (D1, D2, ...)`;
 	}
 
 	return `คุณเป็นผู้เชี่ยวชาญ ER Diagram ให้สร้าง actions ตาม instruction ที่ได้รับ
@@ -89,6 +90,7 @@ function buildContext(body: any): string {
 			for (const n of diagram.dfdNodes) {
 				ctx += `- Node: ${n.name} [${n.type}]`;
 				if (n.processNumber) ctx += ` #${n.processNumber}`;
+				if (n.storeNumber) ctx += ` ${n.storeNumber}`;
 				ctx += '\n';
 			}
 			for (const f of diagram.dfdFlows || []) {

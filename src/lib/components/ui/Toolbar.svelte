@@ -76,9 +76,9 @@
 	}
 
 	const zoomPercent = $derived(Math.round(diagram.zoom * 100));
-	const btnClass = "rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90";
-	const btnWithLabelClass = "flex items-center gap-1 rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-95";
-	const overflowBtnClass = "flex w-full items-center gap-2 rounded px-3 py-2 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]";
+	const btnClass = "rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-90 touch-manipulation";
+	const btnWithLabelClass = "flex items-center gap-1 rounded px-2 py-1.5 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] active:scale-95 touch-manipulation";
+	const overflowBtnClass = "flex w-full items-center gap-2 rounded px-3 py-2 text-xs font-light text-[var(--ui-text-secondary)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)] touch-manipulation";
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -86,7 +86,7 @@
 	<div class="fixed inset-0 z-40" onclick={() => { showOverflow = false; showDesktopOverflow = false; }} onkeydown={(e) => { if (e.key === 'Escape') { showOverflow = false; showDesktopOverflow = false; } }}></div>
 {/if}
 
-<div class="relative flex items-center gap-1 rounded-lg bg-[var(--ui-bg-secondary)] border border-[var(--ui-border)] p-1 shadow-sm">
+<div class="relative flex items-center gap-1 rounded-lg bg-[var(--ui-bg-secondary)] border border-[var(--ui-border)] p-1 shadow-sm overflow-x-auto max-w-full">
 	<!-- Theme toggle -->
 	<button
 		class={btnClass}
@@ -127,8 +127,8 @@
 	<!-- Auto-save indicator -->
 	<AutoSaveIndicator />
 
-	<!-- Desktop primary buttons (always visible on xl) -->
-	<div class="hidden xl:contents">
+	<!-- Desktop primary buttons (always visible on 2xl) -->
+	<div class="hidden 2xl:contents">
 		{#if diagram.diagramType === 'er'}
 			<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 
@@ -142,10 +142,12 @@
 		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 
 		<!-- AI features group -->
-		<button class={btnWithLabelClass} onclick={onanalyze} title={i18n.t('toolbar.analyze')} aria-label={i18n.t('toolbar.analyze')}>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-			{i18n.t('toolbar.ai')}
-		</button>
+		{#if diagram.diagramType !== 'context'}
+			<button class={btnWithLabelClass} onclick={onanalyze} title={i18n.t('toolbar.analyze')} aria-label={i18n.t('toolbar.analyze')}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+				{i18n.t('toolbar.ai')}
+			</button>
+		{/if}
 
 		<button class={btnWithLabelClass} onclick={ontranslate} title={i18n.t('toolbar.translate')} aria-label={i18n.t('toolbar.translateShort')}>
 			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
@@ -225,7 +227,7 @@
 
 	<!-- Desktop overflow dropdown -->
 	{#if showDesktopOverflow}
-		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg hidden xl:block animate-slide-up">
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg hidden 2xl:block animate-slide-up">
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onimport(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
 				{i18n.t('toolbar.import')}
@@ -275,10 +277,12 @@
 					{i18n.t('toolbar.sqlQuery')}
 				</button>
 			{/if}
-			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onquiz?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
-				{i18n.t('toolbar.quiz')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onquiz?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
+					{i18n.t('toolbar.quiz')}
+				</button>
+			{/if}
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
@@ -305,14 +309,16 @@
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z" /></svg>
 				{i18n.t('toolbar.present')}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ontemplates?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
-				{i18n.t('toolbar.templates')}
-			</button>
-			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ondomainstarter?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
-				{i18n.t('toolbar.domainStarter')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ontemplates?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+					{i18n.t('toolbar.templates')}
+				</button>
+				<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; ondomainstarter?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+					{i18n.t('toolbar.domainStarter')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showDesktopOverflow = false; onhistory?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 				{i18n.t('toolbar.history')}
@@ -332,11 +338,11 @@
 	{/if}
 
 	<!-- Mobile overflow menu button -->
-	<div class="xl:hidden">
+	<div class="2xl:hidden">
 		<div class="mx-1 h-4 w-px bg-[var(--ui-border)]"></div>
 	</div>
 	<button
-		class="xl:hidden {btnClass}"
+		class="2xl:hidden {btnClass}"
 		onclick={() => showOverflow = !showOverflow}
 		title={i18n.t('toolbar.more')}
 		aria-label={i18n.t('toolbar.more')}
@@ -346,7 +352,7 @@
 
 	<!-- Mobile overflow dropdown -->
 	{#if showOverflow}
-		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg xl:hidden max-h-[70vh] overflow-y-auto animate-slide-up">
+		<div class="absolute top-full right-0 z-50 mt-1 w-48 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-1 shadow-lg 2xl:hidden max-h-[70vh] overflow-y-auto animate-slide-up">
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onimport(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
 				{i18n.t('toolbar.import')}
@@ -390,18 +396,22 @@
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onanalyze(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-				{i18n.t('toolbar.aiAnalyze')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; onanalyze(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+					{i18n.t('toolbar.aiAnalyze')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontranslate(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
 				{i18n.t('toolbar.translateShort')}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ongenerate(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-				{i18n.t('toolbar.generateCode')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; ongenerate(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+					{i18n.t('toolbar.generateCode')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onchat(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
 				{i18n.t('toolbar.aiChat')}
@@ -433,10 +443,12 @@
 					{i18n.t('toolbar.sqlQuery')}
 				</button>
 			{/if}
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onquiz?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
-				{i18n.t('toolbar.quiz')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; onquiz?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg>
+					{i18n.t('toolbar.quiz')}
+				</button>
+			{/if}
 
 			<div class="my-1 h-px bg-[var(--ui-border)]"></div>
 
@@ -461,14 +473,16 @@
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
 				Data Flow {diagram.showDataFlow ? '(ON)' : ''}
 			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontemplates?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
-				{i18n.t('toolbar.templates')}
-			</button>
-			<button class={overflowBtnClass} onclick={() => { showOverflow = false; ondomainstarter?.(); }}>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
-				{i18n.t('toolbar.domainStarter')}
-			</button>
+			{#if diagram.diagramType !== 'context'}
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; ontemplates?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+					{i18n.t('toolbar.templates')}
+				</button>
+				<button class={overflowBtnClass} onclick={() => { showOverflow = false; ondomainstarter?.(); }}>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+					{i18n.t('toolbar.domainStarter')}
+				</button>
+			{/if}
 			<button class={overflowBtnClass} onclick={() => { showOverflow = false; onhistory?.(); }}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 				{i18n.t('toolbar.history')}

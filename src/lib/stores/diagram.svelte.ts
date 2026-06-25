@@ -2045,9 +2045,9 @@ export class DiagramState {
 		}
 	}
 
-	addDFDFlow(label: string, fromNodeId: string, toNodeId: string): DFDFlow {
+	addDFDFlow(label: string, fromNodeId: string, toNodeId: string, fromSide?: 'top' | 'right' | 'bottom' | 'left', toSide?: 'top' | 'right' | 'bottom' | 'left', fromPortOffset?: number, toPortOffset?: number, waypoints?: Position[]): DFDFlow {
 		this.pushHistory('Add DFD flow');
-		const flow: DFDFlow = { id: generateId(), label, fromNodeId, toNodeId };
+		const flow: DFDFlow = { id: generateId(), label, fromNodeId, toNodeId, fromSide, toSide, fromPortOffset, toPortOffset, waypoints };
 		this.dfdFlows.push(flow);
 		this.selectedEdgeId = flow.id;
 		this.newDFDFlowIds = new Set([...this.newDFDFlowIds, flow.id]);
@@ -2056,12 +2056,15 @@ export class DiagramState {
 		return flow;
 	}
 
-	updateDFDFlow(id: string, updates: Partial<Pick<DFDFlow, 'label' | 'waypoints'>>) {
+	updateDFDFlow(id: string, updates: Partial<Pick<DFDFlow, 'label' | 'waypoints' | 'fromSide' | 'toSide' | 'labelPosition'>>) {
 		const flow = this.dfdFlows.find((f) => f.id === id);
 		if (!flow) return;
 		this.pushHistory();
 		if (updates.label !== undefined) flow.label = updates.label;
 		if (updates.waypoints !== undefined) flow.waypoints = updates.waypoints;
+		if (updates.fromSide !== undefined) flow.fromSide = updates.fromSide;
+		if (updates.toSide !== undefined) flow.toSide = updates.toSide;
+		if (updates.labelPosition !== undefined) flow.labelPosition = updates.labelPosition;
 		getCollab()?.pushDFDFlowChange(flow);
 	}
 

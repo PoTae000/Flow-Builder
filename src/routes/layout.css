@@ -98,7 +98,16 @@ svg [role="button"]:focus-visible {
 	overflow: hidden;
 }
 
-@media (min-width: 1280px) {
+/* iPad Pro & Tablets (1024px - 1366px) */
+@media (min-width: 1024px) and (max-width: 1366px) {
+	.sidebar-transition {
+		width: 300px;
+		min-width: 300px;
+	}
+}
+
+/* Large Desktop (1367px+) */
+@media (min-width: 1367px) {
 	.sidebar-transition {
 		width: 380px;
 		min-width: 380px;
@@ -148,3 +157,178 @@ svg.touch-canvas {
 /* Canvas fade-in on tab switch */
 @keyframes canvasFadeIn { from { opacity: 0.3; } to { opacity: 1; } }
 .canvas-fade-in { animation: canvasFadeIn 0.25s ease-out; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* iPad Pro & Tablet Responsive Optimizations (1024px - 1366px)                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+@media (min-width: 1024px) and (max-width: 1366px) {
+	/* Increase touch targets for better tablet experience */
+	button, a, input[type="checkbox"], input[type="radio"] {
+		min-height: 44px;
+		min-width: 44px;
+	}
+
+	/* Optimize toolbar spacing */
+	.toolbar-container {
+		padding: 0.5rem;
+	}
+
+	/* Adjust modal widths for tablets */
+	.modal-dialog,
+	[role="dialog"],
+	.modal,
+	.panel {
+		max-width: min(90vw, 800px);
+	}
+
+	/* Optimize chat/side panels for tablets */
+	.side-panel {
+		width: min(400px, 40vw);
+	}
+
+	/* Better spacing for cards and panels */
+	.card,
+	.panel-card {
+		padding: 1.25rem;
+	}
+
+	/* Optimize form panel padding */
+	.form-panel-content {
+		padding: 1rem;
+	}
+
+	/* Adjust font sizes for better readability on tablets */
+	body {
+		font-size: 15px;
+	}
+
+	/* Optimize search overlay for tablets */
+	.search-overlay {
+		max-width: 500px;
+	}
+
+	/* Optimize dropdown menus for tablets */
+	.dropdown-menu {
+		max-width: 280px;
+	}
+}
+
+/* iPad Pro Landscape Specific (1366 x 1024) */
+@media (min-width: 1360px) and (max-width: 1370px) and (min-height: 1020px) and (max-height: 1030px) {
+	/* Fine-tune for iPad Pro landscape dimensions */
+	.sidebar-transition {
+		width: 320px;
+		min-width: 320px;
+	}
+
+	/* Optimize canvas area */
+	.diagram-canvas {
+		width: calc(100vw - 320px);
+	}
+}
+
+/* iPad Pro Portrait Specific (1024 x 1366) */
+@media (min-width: 1020px) and (max-width: 1030px) and (min-height: 1360px) and (max-height: 1370px) {
+	/* Optimize for portrait mode - use mobile-like bottom sheet */
+	.sidebar-transition {
+		width: 280px;
+		min-width: 280px;
+	}
+
+	/* Compact toolbar for portrait */
+	.toolbar-compact {
+		transform: scale(0.95);
+		transform-origin: top right;
+	}
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+	/* Increase button padding for touch */
+	button {
+		padding: 0.75rem 1rem;
+	}
+
+	/* Increase line height for better touch selection */
+	input, textarea, select {
+		line-height: 1.6;
+		padding: 0.75rem;
+	}
+
+	/* Optimize SVG interaction for touch */
+	svg[role="button"],
+	.entity-node,
+	.flow-node,
+	.dfd-node {
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	/* Prevent double-tap zoom on interactive elements */
+	button, a, input, select, textarea {
+		touch-action: manipulation;
+	}
+
+	/* Optimize canvas pan/zoom gestures */
+	.diagram-canvas {
+		touch-action: none;
+		-webkit-user-select: none;
+		user-select: none;
+	}
+}
+
+/* Optimize for tablet orientation changes */
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
+	/* Landscape mode optimizations */
+	.sidebar-transition {
+		width: 300px;
+		min-width: 300px;
+	}
+
+	/* Compact toolbar in landscape */
+	.toolbar-container {
+		transform: scale(0.98);
+		transform-origin: top right;
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: portrait) {
+	/* Portrait mode optimizations */
+	.sidebar-transition {
+		width: 280px;
+		min-width: 280px;
+	}
+
+	/* More compact toolbar in portrait */
+	.toolbar-container {
+		transform: scale(0.95);
+		transform-origin: top right;
+	}
+
+	/* Adjust minimap size */
+	.minimap {
+		transform: scale(0.9);
+		transform-origin: bottom left;
+	}
+}
+
+/* High DPI displays (Retina, iPad Pro) */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+	/* Sharper text rendering on high DPI displays */
+	body {
+		-webkit-font-smoothing: subpixel-antialiased;
+		-moz-osx-font-smoothing: auto;
+	}
+
+	/* Sharper SVG rendering */
+	svg {
+		shape-rendering: geometricPrecision;
+	}
+
+	/* Adjust border widths for Retina displays */
+	.border,
+	[class*="border-"] {
+		border-width: 0.5px;
+	}
+}

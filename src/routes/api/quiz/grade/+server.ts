@@ -1,7 +1,8 @@
 import type { RequestHandler } from './$types';
 import { aiRequest } from '$lib/server/ai-request';
+import type { DiagramType } from '$lib/types/diagram';
 
-const GRADE_PROMPT = `You are an expert database design grading assistant. Grade a student's ER diagram solution against the ideal solution.
+const GRADE_PROMPT = `You are an expert database design grading assistant. Grade a student's diagram solution against the ideal solution.
 
 You MUST return ONLY valid JSON (no markdown, no explanation) in this exact format:
 {
@@ -20,11 +21,22 @@ You MUST return ONLY valid JSON (no markdown, no explanation) in this exact form
   "overallComment": "Friendly, constructive feedback for the student"
 }
 
+For DFD/Context Diagrams, adapt the feedback fields:
+- "missingEntities" → missing nodes (processes, external entities, data stores)
+- "extraEntities" → extra/unnecessary nodes
+- "missingRelationships" → missing data flows
+- "wrongCardinality" → wrong flow directions or labels
+- "missingPKs" → missing process numbers or store numbers
+
+For Flowcharts, adapt similarly:
+- "missingEntities" → missing nodes
+- "missingRelationships" → missing edges/connections
+
 Grading criteria:
-- Entities: +10 each correct, -5 each missing, -2 each extra/unnecessary
-- Relationships: +15 each correct, -10 each missing
-- Cardinality: +5 each correct, -5 each wrong
-- Primary Keys: +5 each correct, -8 each missing
+- Entities/Nodes: +10 each correct, -5 each missing, -2 each extra/unnecessary
+- Relationships/Flows/Edges: +15 each correct, -10 each missing
+- Cardinality/Direction: +5 each correct, -5 each wrong
+- Primary Keys/Numbers: +5 each correct, -8 each missing
 - Base score starts at 0, cap at 100
 
 Grade scale:
@@ -38,8 +50,8 @@ Rules:
 - Be constructive and encouraging in overallComment
 - List specific items in each feedback category
 - Empty arrays for categories with no issues
-- Compare entity names case-insensitively
-- A student entity matches if it's conceptually equivalent (e.g., "Customer" matches "Customers")
+- Compare names case-insensitively
+- A student item matches if it's conceptually equivalent
 
 CRITICAL LANGUAGE RULES:
 - "overallComment" and "correctParts" MUST be in Thai (ภาษาไทย)
@@ -66,11 +78,31 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		},
 		buildMessages: (body) => {
 			const { scenario, requirements, idealSolution, userSolution } = body;
+			const diagramType: DiagramType = body.diagramType || 'er';
 			const safeScenario = String(scenario).slice(0, 2000);
 			const safeReqs = Array.isArray(requirements)
 				? requirements.slice(0, 20).map((r: unknown) => String(r).slice(0, 500))
 				: [];
-			const userMsg = `Grade this student's ER diagram solution.
+
+			let typeLabel: string;
+			let idealDesc: string;
+			let studentDesc: string;
+
+			if (diagramType === 'context') {
+				typeLabel = 'DFD (Context Diagram)';
+				idealDesc = `Nodes: ${JSON.stringify(idealSolution.dfdNodes || idealSolution.entities).slice(0, 10000)}\nFlows: ${JSON.stringify(idealSolution.dfdFlows || idealSolution.relationships).slice(0, 10000)}`;
+				studentDesc = `Nodes: ${JSON.stringify(userSolution.dfdNodes || userSolution.entities).slice(0, 10000)}\nFlows: ${JSON.stringify(userSolution.dfdFlows || userSolution.relationships).slice(0, 10000)}`;
+			} else if (diagramType === 'flowchart') {
+				typeLabel = 'Flowchart';
+				idealDesc = `Nodes: ${JSON.stringify(idealSolution.flowNodes || idealSolution.entities).slice(0, 10000)}\nEdges: ${JSON.stringify(idealSolution.flowEdges || idealSolution.relationships).slice(0, 10000)}`;
+				studentDesc = `Nodes: ${JSON.stringify(userSolution.flowNodes || userSolution.entities).slice(0, 10000)}\nEdges: ${JSON.stringify(userSolution.flowEdges || userSolution.relationships).slice(0, 10000)}`;
+			} else {
+				typeLabel = 'ER diagram';
+				idealDesc = `Entities: ${JSON.stringify(idealSolution.entities).slice(0, 10000)}\nRelationships: ${JSON.stringify(idealSolution.relationships).slice(0, 10000)}`;
+				studentDesc = `Entities: ${JSON.stringify(userSolution.entities).slice(0, 10000)}\nRelationships: ${JSON.stringify(userSolution.relationships).slice(0, 10000)}`;
+			}
+
+			const userMsg = `Grade this student's ${typeLabel} solution.
 
 SCENARIO:
 ${safeScenario}
@@ -79,12 +111,10 @@ REQUIREMENTS:
 ${safeReqs.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')}
 
 IDEAL SOLUTION:
-Entities: ${JSON.stringify(idealSolution.entities).slice(0, 10000)}
-Relationships: ${JSON.stringify(idealSolution.relationships).slice(0, 10000)}
+${idealDesc}
 
 STUDENT'S SOLUTION:
-Entities: ${JSON.stringify(userSolution.entities).slice(0, 10000)}
-Relationships: ${JSON.stringify(userSolution.relationships).slice(0, 10000)}`;
+${studentDesc}`;
 
 			return [
 				{ role: 'system', content: GRADE_PROMPT },

@@ -55,7 +55,7 @@ You MUST return ONLY valid JSON (no markdown, no explanation) in this exact form
   "dfdNodes": [
     { "name": "Customer", "type": "external-entity" },
     { "name": "Process Order", "type": "process", "processNumber": "1.0" },
-    { "name": "Orders DB", "type": "data-store" }
+    { "name": "Orders DB", "type": "data-store", "storeNumber": "D1" }
   ],
   "dfdFlows": [
     { "label": "Order Request", "fromNode": "Customer", "toNode": "Process Order" },
@@ -65,6 +65,7 @@ You MUST return ONLY valid JSON (no markdown, no explanation) in this exact form
 
 Node type must be one of: "process", "external-entity", "data-store"
 All processes MUST have processNumber (e.g., "1.0", "2.0")
+All data-stores MUST have storeNumber (e.g., "D1", "D2", "D3")
 ALL flows MUST have descriptive labels
 
 GOAL: The output MUST be a PERFECT DFD that scores 100/100.

@@ -12,7 +12,9 @@
 		animateIn = false,
 		dying = false,
 		onclick,
-		onlinemousedown
+		ondblclick,
+		onlinemousedown,
+		onlabelmousedown
 	}: {
 		flow: DFDFlow;
 		fromNode: DFDNode;
@@ -21,7 +23,9 @@
 		animateIn?: boolean;
 		dying?: boolean;
 		onclick?: () => void;
+		ondblclick?: () => void;
 		onlinemousedown?: (e: MouseEvent) => void;
+		onlabelmousedown?: (e: MouseEvent) => void;
 	} = $props();
 
 	const colors = $derived(theme.colors);
@@ -47,54 +51,71 @@
 		return dy > 0 ? 'bottom' : 'top';
 	}
 
-	function getPortPos(dir: Dir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number): Position {
+	function getPortPos(dir: Dir, rect: { x: number; y: number; w: number; h: number }, cx: number, cy: number, offset?: number): Position {
+		const off = offset || 0;
 		switch (dir) {
-			case 'right': return { x: rect.x + rect.w, y: cy };
-			case 'left': return { x: rect.x, y: cy };
-			case 'bottom': return { x: cx, y: rect.y + rect.h };
-			case 'top': return { x: cx, y: rect.y };
+			case 'right': return { x: rect.x + rect.w, y: Math.max(rect.y, Math.min(rect.y + rect.h, cy + off)) };
+			case 'left': return { x: rect.x, y: Math.max(rect.y, Math.min(rect.y + rect.h, cy + off)) };
+			case 'bottom': return { x: Math.max(rect.x, Math.min(rect.x + rect.w, cx + off)), y: rect.y + rect.h };
+			case 'top': return { x: Math.max(rect.x, Math.min(rect.x + rect.w, cx + off)), y: rect.y };
 		}
 	}
 
-	// Build orthogonal 4-point route
+	// Build orthogonal route
 	function buildRoute(wp?: Position): Position[] {
 		const fromRect = getNodeRect(fromNode);
 		const toRect = getNodeRect(toNode);
 		const fcx = fromNode.position.x, fcy = fromNode.position.y;
 		const tcx = toNode.position.x, tcy = toNode.position.y;
 
-		const fromDir = naturalDir(fcx, fcy, tcx, tcy, fromNode.type);
-		const toDir = naturalDir(tcx, tcy, fcx, fcy, toNode.type);
-		const p1 = getPortPos(fromDir, fromRect, fcx, fcy);
-		const p4 = getPortPos(toDir, toRect, tcx, tcy);
+		const fromDir = flow.fromSide || naturalDir(fcx, fcy, tcx, tcy, fromNode.type);
+		const toDir = flow.toSide || naturalDir(tcx, tcy, fcx, fcy, toNode.type);
+		const p1 = getPortPos(fromDir, fromRect, fcx, fcy, flow.fromPortOffset);
+		const pEnd = getPortPos(toDir, toRect, tcx, tcy, flow.toPortOffset);
 
 		const sH = fromDir === 'left' || fromDir === 'right';
 		const eH = toDir === 'left' || toDir === 'right';
-		let p2: Position, p3: Position;
+		const pts: Position[] = [p1];
 
 		if (wp) {
 			// User-controlled: waypoint defines the middle segment position
 			if (sH) {
-				// H-V-H: wp.x controls where the vertical middle segment is
-				p2 = { x: wp.x, y: p1.y };
-				p3 = { x: wp.x, y: p4.y };
+				pts.push({ x: wp.x, y: p1.y });
+				// If toDir is also H, go directly to pEnd.y then pEnd
+				if (eH) {
+					pts.push({ x: wp.x, y: pEnd.y });
+				} else {
+					// toDir is V: need to reach pEnd.x at the wp corridor, then go vertical
+					pts.push({ x: wp.x, y: pEnd.y + (toDir === 'top' ? -20 : 20) });
+					pts.push({ x: pEnd.x, y: pEnd.y + (toDir === 'top' ? -20 : 20) });
+				}
 			} else {
-				// V-H-V: wp.y controls where the horizontal middle segment is
-				p2 = { x: p1.x, y: wp.y };
-				p3 = { x: p4.x, y: wp.y };
+				pts.push({ x: p1.x, y: wp.y });
+				// If toDir is also V, go directly to pEnd.x then pEnd
+				if (!eH) {
+					pts.push({ x: pEnd.x, y: wp.y });
+				} else {
+					// toDir is H: need to reach pEnd.y at the wp corridor, then go horizontal
+					pts.push({ x: pEnd.x + (toDir === 'left' ? -20 : 20), y: wp.y });
+					pts.push({ x: pEnd.x + (toDir === 'left' ? -20 : 20), y: pEnd.y });
+				}
 			}
 		} else {
 			// Auto-route
 			if (sH && eH) {
-				const midX = (p1.x + p4.x) / 2;
-				p2 = { x: midX, y: p1.y }; p3 = { x: midX, y: p4.y };
+				const midX = (p1.x + pEnd.x) / 2;
+				pts.push({ x: midX, y: p1.y });
+				pts.push({ x: midX, y: pEnd.y });
 			} else if (!sH && !eH) {
-				const midY = (p1.y + p4.y) / 2;
-				p2 = { x: p1.x, y: midY }; p3 = { x: p4.x, y: midY };
+				const midY = (p1.y + pEnd.y) / 2;
+				pts.push({ x: p1.x, y: midY });
+				pts.push({ x: pEnd.x, y: midY });
 			} else if (sH && !eH) {
-				p2 = { x: p4.x, y: p1.y }; p3 = p2;
+				const bend = { x: pEnd.x, y: p1.y };
+				pts.push(bend);
 			} else {
-				p2 = { x: p1.x, y: p4.y }; p3 = p2;
+				const bend = { x: p1.x, y: pEnd.y };
+				pts.push(bend);
 			}
 
 			const GAP = 30;
@@ -102,16 +123,31 @@
 				const routeY = fromDir === 'top'
 					? Math.min(fromRect.y, toRect.y) - GAP
 					: Math.max(fromRect.y + fromRect.h, toRect.y + toRect.h) + GAP;
-				p2 = { x: p1.x, y: routeY }; p3 = { x: p4.x, y: routeY };
+				// Replace middle points
+				pts.length = 1;
+				pts.push({ x: p1.x, y: routeY });
+				pts.push({ x: pEnd.x, y: routeY });
 			} else if ((fromDir === 'left' && toDir === 'left') || (fromDir === 'right' && toDir === 'right')) {
 				const routeX = fromDir === 'left'
 					? Math.min(fromRect.x, toRect.x) - GAP
 					: Math.max(fromRect.x + fromRect.w, toRect.x + toRect.w) + GAP;
-				p2 = { x: routeX, y: p1.y }; p3 = { x: routeX, y: p4.y };
+				pts.length = 1;
+				pts.push({ x: routeX, y: p1.y });
+				pts.push({ x: routeX, y: pEnd.y });
 			}
 		}
 
-		return [p1, p2, p3, p4];
+		pts.push(pEnd);
+
+		// Deduplicate consecutive identical points
+		const cleaned: Position[] = [pts[0]];
+		for (let i = 1; i < pts.length; i++) {
+			if (Math.abs(pts[i].x - cleaned[cleaned.length - 1].x) > 0.5 ||
+				Math.abs(pts[i].y - cleaned[cleaned.length - 1].y) > 0.5) {
+				cleaned.push(pts[i]);
+			}
+		}
+		return cleaned.length >= 2 ? cleaned : [pts[0], pts[pts.length - 1]];
 	}
 
 	// The route
@@ -215,6 +251,7 @@
 		stroke-width="12"
 		fill="none"
 		onmousedown={(e) => { if (onlinemousedown && e.button === 0) { e.stopPropagation(); onlinemousedown(e); } }}
+		ondblclick={(e) => { if (ondblclick) { e.stopPropagation(); ondblclick(); } }}
 	/>
 
 	<!-- Visible line -->
@@ -225,23 +262,43 @@
 		stroke={selected ? colors.selectedStroke : colors.relationshipStroke}
 		stroke-width={selected ? 2 : 1.5}
 		fill="none"
-		marker-end="url(#dfd-arrow)"
+		marker-end={dying ? 'none' : 'url(#dfd-arrow)'}
 		stroke-dasharray={animateIn || dying ? lineLength : 'none'}
 		stroke-dashoffset={animateIn ? lineLength : 0}
 	/>
 
 	{#if flow.label}
-		<text
-			class="flow-label-text"
-			x={pathData.labelX}
-			y={pathData.labelY}
-			text-anchor={pathData.labelAnchor}
-			dominant-baseline="central"
-			fill={colors.relationshipText}
-			font-size="11"
+		{@const lx = flow.labelPosition?.x ?? pathData.labelX}
+		{@const ly = flow.labelPosition?.y ?? pathData.labelY}
+		{@const anchor = flow.labelPosition ? 'middle' : pathData.labelAnchor}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<g
+			class="flow-label-group"
+			class:draggable={selected}
+			onmousedown={(e) => { if (onlabelmousedown && e.button === 0) { e.stopPropagation(); e.preventDefault(); onlabelmousedown(e); } }}
+			style="cursor: {selected ? 'grab' : 'pointer'};"
 		>
-			{flow.label}
-		</text>
+			<text
+				class="flow-label-bg"
+				x={lx}
+				y={ly}
+				text-anchor={anchor}
+				dominant-baseline="central"
+				stroke={colors.canvasBg}
+				stroke-width="4"
+				font-size="11"
+				paint-order="stroke"
+			>{flow.label}</text>
+			<text
+				class="flow-label-text"
+				x={lx}
+				y={ly}
+				text-anchor={anchor}
+				dominant-baseline="central"
+				fill={colors.relationshipText}
+				font-size="11"
+			>{flow.label}</text>
+		</g>
 	{/if}
 </g>
 
