@@ -142,7 +142,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		try {
 			const completion = await groq.chat.completions.create({
-				model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+				model: 'llama-3.3-70b-versatile',
 				messages: [
 					{
 						role: 'user',

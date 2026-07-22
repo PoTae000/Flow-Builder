@@ -86,11 +86,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// mitigated by the restrictive default-src and other CSP directives.
 	response.headers.set('Content-Security-Policy', [
 		"default-src 'self'",
-		"script-src 'self' accounts.google.com 'unsafe-inline'",
+		"script-src 'self' accounts.google.com static.cloudflareinsights.com 'unsafe-inline'",
 		"style-src 'self' fonts.googleapis.com accounts.google.com 'unsafe-inline'",
-		"font-src fonts.gstatic.com",
+		"font-src 'self' fonts.gstatic.com",
 		"img-src 'self' data: blob: *.googleusercontent.com",
-		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com fonts.googleapis.com wss://signaling.yjs.dev wss://*.onrender.com",
+		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com fonts.googleapis.com cloudflareinsights.com wss://signaling.yjs.dev wss://*.onrender.com",
 		"frame-src accounts.google.com",
 		"worker-src 'self'",
 		"object-src 'none'",
