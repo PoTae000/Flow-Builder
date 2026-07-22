@@ -1,10 +1,15 @@
 import { json } from '@sveltejs/kit';
 import { STRIPE_WEBHOOK_SECRET } from '$env/static/private';
-import { stripe } from '$lib/server/stripe';
+import { stripe, isStripeConfigured } from '$lib/server/stripe';
 import { pool, updateUserPlan } from '$lib/server/db';
 import type Stripe from 'stripe';
 
 export async function POST({ request }: { request: Request }) {
+	// Check if Stripe is configured
+	if (!isStripeConfigured || !stripe) {
+		return json({ error: 'Stripe not configured' }, { status: 503 });
+	}
+
 	const body = await request.text();
 	const signature = request.headers.get('stripe-signature');
 

@@ -2,10 +2,15 @@ import { json, error } from '@sveltejs/kit';
 import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
 import { STRIPE_PRICE_ID } from '$env/static/private';
 import { authenticateRequest } from '$lib/server/google-verify';
-import { stripe } from '$lib/server/stripe';
+import { stripe, isStripeConfigured } from '$lib/server/stripe';
 import { ensureUser, getStripeCustomerId, setStripeCustomerId } from '$lib/server/db';
 
 export async function POST({ request, url }: { request: Request; url: URL }) {
+	// Check if Stripe is configured
+	if (!isStripeConfigured || !stripe) {
+		throw error(503, 'Stripe is not configured. Please contact administrator.');
+	}
+
 	let payload;
 	try {
 		payload = await authenticateRequest(request, PUBLIC_GOOGLE_CLIENT_ID);
