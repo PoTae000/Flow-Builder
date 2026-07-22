@@ -5,25 +5,25 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "wrangler types --check && vite build",
-		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
+		"build": "vite build",
+		"preview": "node build",
 		"prepare": "svelte-kit sync || echo ''",
-		"check": "wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
-		"gen": "wrangler types",
 		"test": "vitest run"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
 		"@eslint/js": "^10.0.1",
-		"@sveltejs/adapter-cloudflare": "^7.2.8",
+		"@sveltejs/adapter-node": "^5.0.0",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@tailwindcss/vite": "^4.2.2",
 		"@types/canvas-confetti": "^1.9.0",
 		"@types/node": "^24",
+		"@types/pg": "^8.0.0",
 		"@types/ws": "^8.18.1",
 		"eslint": "^10.2.0",
 		"eslint-plugin-svelte": "^3.17.0",
@@ -37,14 +37,16 @@
 		"typescript": "^6.0.2",
 		"typescript-eslint": "^8.58.1",
 		"vite": "^8.0.7",
-		"vitest": "^4.1.5",
-		"wrangler": "^4.81.0"
+		"vitest": "^4.1.5"
 	},
 	"dependencies": {
 		"canvas-confetti": "^1.9.4",
 		"cookie": "^1.1.1",
 		"elkjs": "^0.11.1",
+		"groq-sdk": "^0.20.0",
 		"jspdf": "^4.2.1",
+		"pg": "^8.16.0",
+		"stripe": "^22.3.1",
 		"y-webrtc": "^10.3.0",
 		"yjs": "^13.6.30"
 	}

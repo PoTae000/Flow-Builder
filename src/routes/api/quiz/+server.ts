@@ -119,10 +119,9 @@ CRITICAL LANGUAGE RULES:
 - "title", "scenario", "requirements", "hints" MUST be in Thai
 - Use casual, friendly Thai`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			const validDifficulties = ['easy', 'medium', 'hard'];
 			return validDifficulties.includes(body.difficulty);

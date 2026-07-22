@@ -120,7 +120,8 @@
 
 					<!-- Edit panel (when selected & expanded) -->
 					{#if isExpanded}
-						<div class="flex flex-col gap-2.5 border-t border-[var(--ui-border-light)] px-3 py-2.5" transition:slide={{ duration: 250 }}>
+						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+						<div class="flex flex-col gap-2.5 border-t border-[var(--ui-border-light)] px-3 py-2.5" transition:slide={{ duration: 250 }} onclick={(e) => e.stopPropagation()}>
 							<!-- Name -->
 							<div class="flex flex-col gap-1">
 								<span class="text-xs text-[var(--ui-text-muted)]">ชื่อ</span>
@@ -180,7 +181,16 @@
 									onchange={(e) => diagram.updateRelationship(rel.id, { isIdentifying: (e.target as HTMLInputElement).checked })}
 									class="rounded border-[var(--ui-border)]"
 								/>
-								Identifying Relationship
+								<span class="flex items-center gap-1.5">
+									Identifying
+									<svg class="h-4 w-10" viewBox="0 0 40 16">
+										{#if rel.isIdentifying}
+											<line x1="0" y1="8" x2="40" y2="8" stroke="currentColor" stroke-width="1.5" />
+										{:else}
+											<line x1="0" y1="8" x2="40" y2="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="6 3" />
+										{/if}
+									</svg>
+								</span>
 							</label>
 						</div>
 					{/if}

@@ -9,7 +9,7 @@ function buildSystemPrompt(diagramType: string): string {
 	return `คุณเป็นผู้เชี่ยวชาญวางแผนการสร้าง ${diagramLabel}
 
 เมื่อได้รับเป้าหมาย ให้วางแผน 3-6 ขั้นตอนเพื่อสร้าง diagram ที่สมบูรณ์
-- ขั้นตอนสุดท้า���ต้องเป็น auto-layout เสมอ
+- \u0e02\u0e31\u0e49\u0e19\u0e15\u0e2d\u0e19\u0e2a\u0e38\u0e14\u0e17\u0e49\u0e32\u0e22\u0e15\u0e49\u0e2d\u0e07\u0e40\u0e1b\u0e47\u0e19 auto-layout \u0e40\u0e2a\u0e21\u0e2d
 - แต่ละขั้นตอนต้องมี label (แสดง UI) และ instruction (ส่งให้ AI ทำ)
 - ถ้ามี diagram ปัจจุบัน ให้ต่อยอดจากที่มีอยู่
 - ไม่ต้องสร้าง entity/node ซ้ำกับที่มีอยู่แล้ว
@@ -64,10 +64,9 @@ function buildContext(body: any): string {
 	return ctx;
 }
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			if (!body.goal || typeof body.goal !== 'string') return false;
 			if (!body.diagramType) return false;

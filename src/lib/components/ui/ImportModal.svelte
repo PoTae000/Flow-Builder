@@ -76,7 +76,9 @@
 			diagram.relationships = [...diagram.relationships, ...previewData.relationships];
 		}
 
-		diagram.autoLayout();
+		if (!previewData.hasPositions) {
+			diagram.autoLayout();
+		}
 		previewData = null;
 		previewWarnings = [];
 		onclose();

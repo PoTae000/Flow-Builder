@@ -9,6 +9,7 @@ import {
 	MAX_DIAGRAM_DATA_SIZE,
 	MAX_DIAGRAMS_PER_USER
 } from '$lib/server/sync-validate';
+import { pool, ensureUser } from '$lib/server/db';
 import type { RequestHandler } from './$types';
 
 interface DiagramMetaInput {
@@ -29,11 +30,8 @@ interface FailedItem {
 	reason: string;
 }
 
-export const POST: RequestHandler = async ({ request, platform }) => {
-	const kv = platform?.env?.DIAGRAMS_KV;
-	if (!kv) throw error(503, 'Cloud sync is not available');
-
-	const { sub, remaining } = await authenticateAndRateLimit(request, platform);
+export const POST: RequestHandler = async ({ request }) => {
+	const { sub, remaining } = await authenticateAndRateLimit(request);
 
 	let body: { diagrams: PushItem[]; active?: string };
 	try {
@@ -55,15 +53,25 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	try {
-		// Get existing cloud meta list
-		const existingRaw = await kv.get(`user:${sub}:diagrams`);
-		const cloudMetas: DiagramMetaInput[] = existingRaw ? JSON.parse(existingRaw) : [];
-		const cloudMap = new Map(cloudMetas.map((m) => [m.id, m]));
+		await ensureUser(sub);
 
-		// Merge with per-item validation
-		const kvPuts: Promise<void>[] = [];
+		// Get existing diagram count for limit check
+		const countResult = await pool.query<{ count: string }>(
+			'SELECT COUNT(*) as count FROM diagrams WHERE user_sub = $1',
+			[sub]
+		);
+		const existingCount = parseInt(countResult.rows[0].count, 10);
+
+		// Get existing diagram IDs for conflict check
+		const existingResult = await pool.query<{ id: string; updated_at: string }>(
+			'SELECT id, updated_at FROM diagrams WHERE user_sub = $1',
+			[sub]
+		);
+		const existingMap = new Map(existingResult.rows.map(r => [r.id, Number(r.updated_at)]));
+
 		const failed: FailedItem[] = [];
 		let accepted = 0;
+		let newCount = existingCount;
 
 		for (const item of diagrams) {
 			if (!item?.meta?.id) {
@@ -89,33 +97,58 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			}
 
 			// Check per-user diagram limit (only for new diagrams)
-			if (!cloudMap.has(itemId) && cloudMap.size >= MAX_DIAGRAMS_PER_USER) {
+			if (!existingMap.has(itemId) && newCount >= MAX_DIAGRAMS_PER_USER) {
 				failed.push({ id: itemId, reason: `Maximum ${MAX_DIAGRAMS_PER_USER} diagrams per user` });
 				continue;
 			}
 
-			const cloudMeta = cloudMap.get(itemId);
-			if (!cloudMeta || item.meta.updatedAt >= cloudMeta.updatedAt) {
-				cloudMap.set(itemId, item.meta);
-				kvPuts.push(kv.put(`user:${sub}:diagram:${itemId}`, JSON.stringify(item.data)));
+			const existingUpdatedAt = existingMap.get(itemId);
+			if (existingUpdatedAt === undefined || item.meta.updatedAt >= existingUpdatedAt) {
+				await pool.query(
+					`INSERT INTO diagrams (id, user_sub, name, diagram_type, data, created_at, updated_at)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7)
+					 ON CONFLICT (user_sub, id) DO UPDATE SET
+					   name = EXCLUDED.name,
+					   diagram_type = EXCLUDED.diagram_type,
+					   data = EXCLUDED.data,
+					   updated_at = EXCLUDED.updated_at`,
+					[itemId, sub, item.meta.name || '', item.meta.diagramType || 'er', JSON.stringify(item.data), item.meta.createdAt, item.meta.updatedAt]
+				);
+
+				if (!existingMap.has(itemId)) newCount++;
+				existingMap.set(itemId, item.meta.updatedAt);
+
+				// Auto-save version snapshot
+				await pool.query(
+					`INSERT INTO diagram_versions (user_sub, diagram_id, data, name, diagram_type, created_at)
+					 VALUES ($1, $2, $3, $4, $5, $6)`,
+					[sub, itemId, JSON.stringify(item.data), item.meta.name || '', item.meta.diagramType || 'er', item.meta.updatedAt]
+				);
+
+				// Prune old versions (keep max 50 per diagram)
+				await pool.query(
+					`DELETE FROM diagram_versions
+					 WHERE user_sub = $1 AND diagram_id = $2
+					 AND id NOT IN (
+					   SELECT id FROM diagram_versions
+					   WHERE user_sub = $1 AND diagram_id = $2
+					   ORDER BY created_at DESC LIMIT 50
+					 )`, [sub, itemId]
+				);
 			}
 			accepted++;
 		}
 
-		// Save updated meta list
-		const mergedMetas = Array.from(cloudMap.values());
-		kvPuts.push(kv.put(`user:${sub}:diagrams`, JSON.stringify(mergedMetas)));
-
-		// Save active diagram ID
-		if (active) {
-			kvPuts.push(kv.put(`user:${sub}:active`, active));
-		}
-
-		// Bump version counter using Date.now() to avoid read-increment-write race
+		// Save active diagram ID + bump version
 		const newVersion = Date.now();
-		kvPuts.push(kv.put(`user:${sub}:version`, String(newVersion)));
-
-		await Promise.all(kvPuts);
+		await pool.query(
+			`INSERT INTO user_state (user_sub, active_diagram_id, version)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (user_sub) DO UPDATE SET
+			   active_diagram_id = COALESCE($2, user_state.active_diagram_id),
+			   version = $3`,
+			[sub, active || null, newVersion]
+		);
 
 		const result: Record<string, unknown> = { ok: true, count: accepted, version: newVersion };
 		if (failed.length > 0) {
@@ -125,7 +158,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		return withRateLimitHeaders(json(result), remaining);
 	} catch (err) {
 		if (isHttpError(err)) throw err;
-		console.error('[sync/push] KV error:', err);
+		console.error('[sync/push] DB error:', err);
 		throw error(500, 'Sync push failed');
 	}
 };

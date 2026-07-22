@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { suggestions } from '$lib/stores/suggestions.svelte';
+	import { diagram } from '$lib/stores/diagram.svelte';
 
 	let expanded = $state(false);
 
+	const hasItems = $derived(
+		diagram.diagramType === 'er' ? diagram.entities.length > 0
+		: diagram.diagramType === 'context' ? diagram.dfdNodes.length > 0
+		: diagram.diagramType === 'flowchart' ? diagram.flowNodes.length > 0
+		: false
+	);
+
 	const hasSuggestions = $derived(
+		hasItems &&
 		!suggestions.dismissed &&
 		suggestions.suggestions.length > 0 &&
 		!suggestions.loading
 	);
 
-	const isLoading = $derived(suggestions.loading);
+	const isLoading = $derived(hasItems && suggestions.loading);
 </script>
 
 <!-- Desktop only: hidden on mobile -->

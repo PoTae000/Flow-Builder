@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { FlowNode } from '$lib/types/flowchart';
+	import { theme } from '$lib/stores/theme.svelte';
 
 	let {
 		node,
@@ -9,6 +10,7 @@
 		onStartResize: (handle: string, e: MouseEvent) => void;
 	} = $props();
 
+	const colors = $derived(theme.colors);
 	const W = $derived(node.width || 140);
 	const H = $derived(node.height || 60);
 	const cx = $derived(node.position.x);
@@ -28,14 +30,14 @@
 
 {#each handles as h}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<rect
-		x={h.x - 4}
-		y={h.y - 4}
-		width={8}
-		height={8}
-		fill="white"
-		stroke="#3b82f6"
+	<circle
+		cx={h.x}
+		cy={h.y}
+		r="5"
+		fill={colors.selectedStroke}
+		stroke="white"
 		stroke-width="1.5"
+		class="resize-handle"
 		style="cursor: {h.cursor};"
 		onmousedown={(e) => {
 			e.stopPropagation();
@@ -43,3 +45,12 @@
 		}}
 	/>
 {/each}
+
+<style>
+	.resize-handle {
+		transition: r 0.15s ease;
+	}
+	.resize-handle:hover {
+		r: 7;
+	}
+</style>

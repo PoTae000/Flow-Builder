@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 
 	let {
 		onclose
@@ -85,7 +86,7 @@
 				body.relationships = $state.snapshot(diagram.relationships);
 			}
 
-			const res = await fetch('/api/translate', {
+			const res = await aiFetch('/api/translate', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body),

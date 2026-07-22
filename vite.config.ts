@@ -7,7 +7,7 @@ import { signalingServer } from './vite-plugin-signaling';
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit(), signalingServer()],
 	server: {
-		allowedHosts: process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',') : []
+		allowedHosts: process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',') : true
 	},
 	build: {
 		sourcemap: false

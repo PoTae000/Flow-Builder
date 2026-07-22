@@ -1,15 +1,17 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { authenticateAndRateLimit, withRateLimitHeaders } from '$lib/server/sync-validate';
+import { pool } from '$lib/server/db';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ request, platform }) => {
-	const kv = platform?.env?.DIAGRAMS_KV;
-	if (!kv) throw error(503, 'Cloud sync is not available');
+export const GET: RequestHandler = async ({ request }) => {
+	const { sub, remaining } = await authenticateAndRateLimit(request);
 
-	const { sub, remaining } = await authenticateAndRateLimit(request, platform);
+	const result = await pool.query<{ version: string }>(
+		'SELECT version FROM user_state WHERE user_sub = $1',
+		[sub]
+	);
 
-	const raw = await kv.get(`user:${sub}:version`);
-	const version = raw ? parseInt(raw, 10) : 0;
+	const version = result.rows[0] ? Number(result.rows[0].version) : 0;
 
 	return withRateLimitHeaders(json({ version }), remaining);
 };

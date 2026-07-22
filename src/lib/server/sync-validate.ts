@@ -36,8 +36,7 @@ export function estimateDataSize(data: unknown): number {
 // --- Auth + Rate Limit ---
 
 export async function authenticateAndRateLimit(
-	request: Request,
-	platform: App.Platform | undefined
+	request: Request
 ): Promise<{ sub: string; remaining: number }> {
 	let payload;
 	try {
@@ -49,8 +48,7 @@ export async function authenticateAndRateLimit(
 	const sub = payload.sub;
 	if (!sub) throw error(401, 'Invalid token: missing sub');
 
-	const kv = platform?.env?.DIAGRAMS_KV;
-	const { allowed, remaining } = await checkRateLimit(kv, `sync:${sub}`, SYNC_RATE_LIMIT);
+	const { allowed, remaining } = await checkRateLimit(`sync:${sub}`, SYNC_RATE_LIMIT);
 	if (!allowed) {
 		throw error(429, 'Rate limit exceeded. Try again in a minute.');
 	}

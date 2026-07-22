@@ -24,6 +24,9 @@ export interface NotationRenderer {
 	/** Get SVG marker IDs needed for this notation */
 	getMarkerDefs(): string;
 
+	/** Get stroke-dasharray for a relationship line (undefined = solid) */
+	getStrokeDashArray(relationship: Relationship): string | undefined;
+
 	/** Whether this notation renders attributes inside the entity box */
 	inlineAttributes: boolean;
 

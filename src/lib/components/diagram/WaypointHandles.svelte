@@ -23,37 +23,24 @@
 {#each route as point, i}
 	{#if i > 0 && i < route.length - 1}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<g>
-			<!-- Draggable handle -->
-			<circle
-				cx={point.x}
-				cy={point.y}
-				r="5"
-				fill="white"
-				stroke={colors.selectedStroke}
-				stroke-width="2"
-				style="cursor: move;"
-				onmousedown={(e) => {
-					e.stopPropagation();
-					onDragWaypoint(i, e);
-				}}
-			/>
-
-			<!-- Remove button -->
-			<circle
-				cx={point.x + 10}
-				cy={point.y - 10}
-				r="4"
-				fill="#ef4444"
-				stroke="white"
-				stroke-width="1"
-				style="cursor: pointer;"
-				onclick={(e) => {
-					e.stopPropagation();
-					onRemoveWaypoint(i);
-				}}
-			/>
-		</g>
+		<circle
+			cx={point.x}
+			cy={point.y}
+			r="5"
+			fill={colors.selectedStroke}
+			stroke="white"
+			stroke-width="1.5"
+			class="waypoint-handle"
+			style="cursor: move;"
+			onmousedown={(e) => {
+				e.stopPropagation();
+				onDragWaypoint(i, e);
+			}}
+			ondblclick={(e) => {
+				e.stopPropagation();
+				onRemoveWaypoint(i);
+			}}
+		/>
 	{/if}
 {/each}
 
@@ -68,11 +55,11 @@
 		cx={midX}
 		cy={midY}
 		r="4"
-		fill={colors.entityFill}
-		stroke={colors.selectedStroke}
-		stroke-width="1.5"
-		stroke-dasharray="2 2"
-		opacity="0.6"
+		fill={colors.selectedStroke}
+		stroke="white"
+		stroke-width="1"
+		opacity="0.35"
+		class="add-waypoint-handle"
 		style="cursor: pointer;"
 		onclick={(e) => {
 			e.stopPropagation();
@@ -80,3 +67,19 @@
 		}}
 	/>
 {/each}
+
+<style>
+	.waypoint-handle {
+		transition: r 0.15s ease;
+	}
+	.waypoint-handle:hover {
+		r: 7;
+	}
+	.add-waypoint-handle {
+		transition: r 0.15s ease, opacity 0.15s ease;
+	}
+	.add-waypoint-handle:hover {
+		r: 6;
+		opacity: 0.7 !important;
+	}
+</style>

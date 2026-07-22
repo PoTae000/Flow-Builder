@@ -29,7 +29,7 @@
 	import { i18n } from '$lib/i18n';
 	import { createOrthogonalPath } from '$lib/renderers/shared/svg-utils';
 	import type { CardinalityType } from '$lib/types/er';
-	import type { FlowEdge } from '$lib/types/flowchart';
+	import type { FlowEdge, FlowNode } from '$lib/types/flowchart';
 	import type { DFDFlow, DFDNode } from '$lib/types/context-diagram';
 
 	let svgEl: SVGSVGElement | undefined = $state();
@@ -313,6 +313,20 @@
 		waypointIndex: number;
 		startX: number;
 		startY: number;
+	} | null>(null);
+
+	// Flowchart edge drag — mousedown on edge, waiting for drag threshold to create waypoint
+	let pendingFlowEdgeDrag = $state<{
+		edgeId: string;
+		screenX: number;
+		screenY: number;
+	} | null>(null);
+
+	// Flowchart edge segment dragging (draw.io style — constrained to one axis)
+	let draggingFlowSegment = $state<{
+		edgeId: string;
+		constraint: 'x' | 'y'; // 'x' = vertical segment, drag changes x; 'y' = horizontal segment, drag changes y
+		offset: number; // offset between mouse and the mid-segment position (prevents jump on drag start)
 	} | null>(null);
 
 	// DFD segment dragging (draw.io style)
@@ -649,6 +663,42 @@
 		return { x: cx + hw, y: cy };
 	}
 
+	function getFlowEdgeFromSide(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): 'top' | 'bottom' | 'left' | 'right' {
+		const dx = toNode.position.x - fromNode.position.x;
+		const dy = toNode.position.y - fromNode.position.y;
+		if (fromNode.type === 'decision') {
+			return Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
+		}
+		return dy >= 0 ? 'bottom' : 'top';
+	}
+
+	function getFlowEdgeToSide(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): 'top' | 'bottom' | 'left' | 'right' {
+		const dy = toNode.position.y - fromNode.position.y;
+		return toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
+	}
+
+	function getFlowEdgeRoute(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode, offset: number): { x: number; y: number }[] {
+		const fromSide = getFlowEdgeFromSide(edge, fromNode, toNode);
+		const toSide = getFlowEdgeToSide(edge, fromNode, toNode);
+		const fp = getFlowPort(fromNode, fromSide);
+		const tp = getFlowPort(toNode, toSide);
+
+		if (edge.waypoints && edge.waypoints.length === 1) {
+			const wp = edge.waypoints[0];
+			if (fromSide === 'top' || fromSide === 'bottom') {
+				return [fp, { x: fp.x, y: wp.y }, { x: tp.x, y: wp.y }, tp];
+			}
+			return [fp, { x: wp.x, y: fp.y }, { x: wp.x, y: tp.y }, tp];
+		}
+
+		if (edge.waypoints && edge.waypoints.length > 1) {
+			return [fp, ...edge.waypoints, tp];
+		}
+
+		const midY = (fp.y + tp.y) / 2 + offset;
+		return [fp, { x: fp.x, y: midY }, { x: tp.x, y: midY }, tp];
+	}
+
 	const flowParticlePaths = $derived.by((): PathData[] => {
 		if (diagram.diagramType !== 'flowchart') return [];
 		return diagram.flowEdges.map(edge => {
@@ -659,39 +709,8 @@
 			const offset = flowEdgeOffsets.get(edge.id) ?? 0;
 			const lineStyle = edge.lineStyle || 'orthogonal';
 
-			// Compute route (same logic as FlowEdgeLine)
-			let route: { x: number; y: number }[];
-
-			if (edge.waypoints && edge.waypoints.length > 0) {
-				const dx = toNode.position.x - fromNode.position.x;
-				const dy = toNode.position.y - fromNode.position.y;
-				let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
-				let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
-				if (fromNode.type === 'decision') {
-					fromSide = Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
-				} else {
-					fromSide = dy >= 0 ? 'bottom' : 'top';
-				}
-				toSide = toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
-				const fp = getFlowPort(fromNode, fromSide);
-				const tp = getFlowPort(toNode, toSide);
-				route = [fp, ...edge.waypoints, tp];
-			} else {
-				const dx = toNode.position.x - fromNode.position.x;
-				const dy = toNode.position.y - fromNode.position.y;
-				let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
-				let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
-				if (fromNode.type === 'decision') {
-					fromSide = Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
-				} else {
-					fromSide = dy >= 0 ? 'bottom' : 'top';
-				}
-				toSide = toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
-				const fp = getFlowPort(fromNode, fromSide);
-				const tp = getFlowPort(toNode, toSide);
-				const midY = (fp.y + tp.y) / 2 + offset;
-				route = [fp, { x: fp.x, y: midY }, { x: tp.x, y: midY }, tp];
-			}
+			// Compute route using shared helper
+			const route = getFlowEdgeRoute(edge, fromNode, toNode, offset);
 
 			// Build path string per lineStyle
 			let d: string;
@@ -861,7 +880,6 @@
 			}
 			if (offsets.size > 0) {
 				if (!diagram.physicsMode) diagram.pushHistory();
-				if (offsets.size > 1) diagram.startMultiDrag();
 				dragging = { offsets, startX: svgPos.x, startY: svgPos.y };
 				// Mark as locally dragging (skip remote physics lerp)
 				diagram.localDraggingIds = new Set(offsets.keys());
@@ -1271,6 +1289,73 @@
 		diagram.pushHistory('Remove waypoint');
 	}
 
+	// Flowchart edge drag handlers (draw.io style — drag on edge to create waypoint)
+	function handleFlowEdgeMouseDown(edgeId: string, e: MouseEvent) {
+		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
+		diagram.selectRelationship(edgeId);
+		pendingFlowEdgeDrag = { edgeId, screenX: e.clientX, screenY: e.clientY };
+	}
+
+	const FLOW_EDGE_DRAG_THRESHOLD = 10;
+
+	function promoteFlowEdgeDrag(e: MouseEvent) {
+		if (!pendingFlowEdgeDrag) return;
+		const dx = e.clientX - pendingFlowEdgeDrag.screenX;
+		const dy = e.clientY - pendingFlowEdgeDrag.screenY;
+		if (dx * dx + dy * dy < FLOW_EDGE_DRAG_THRESHOLD * FLOW_EDGE_DRAG_THRESHOLD) return;
+
+		const { edgeId } = pendingFlowEdgeDrag;
+		pendingFlowEdgeDrag = null;
+
+		const edge = diagram.flowEdges.find(ed => ed.id === edgeId);
+		if (!edge) return;
+		const fromNode = diagram.flowNodes.find(n => n.id === edge.fromNodeId);
+		const toNode = diagram.flowNodes.find(n => n.id === edge.toNodeId);
+		if (!fromNode || !toNode) return;
+
+		// Determine constraint from exit direction
+		const fromSide = getFlowEdgeFromSide(edge, fromNode, toNode);
+		// Vertical exit (top/bottom) → middle segment is horizontal → drag changes y
+		// Horizontal exit (left/right) → middle segment is vertical → drag changes x
+		const constraint = (fromSide === 'top' || fromSide === 'bottom') ? 'y' : 'x';
+
+		// Get current mid-segment position (from existing waypoint or auto-route)
+		const offset = flowEdgeOffsets.get(edge.id) ?? 0;
+		const route = getFlowEdgeRoute(edge, fromNode, toNode, offset);
+		const midSegVal = constraint === 'x' ? route[1].x : route[1].y;
+
+		// Initialize waypoint from current auto-route middle segment if not yet set
+		if (!edge.waypoints || edge.waypoints.length === 0) {
+			diagram.updateFlowEdge(edge.id, { waypoints: [{ x: route[1].x, y: route[1].y }] });
+		}
+
+		// Compute offset so line doesn't jump: offset = midSegPosition - mousePosition
+		const svgPos = getSVGPoint(e);
+		const mouseVal = constraint === 'x' ? svgPos.x : svgPos.y;
+		const dragOffset = midSegVal - mouseVal;
+
+		draggingFlowSegment = { edgeId, constraint, offset: dragOffset };
+	}
+
+	function handleFlowSegmentDrag(e: MouseEvent) {
+		if (!draggingFlowSegment) return;
+		const edge = diagram.flowEdges.find(ed => ed.id === draggingFlowSegment!.edgeId);
+		if (!edge || !edge.waypoints || edge.waypoints.length === 0) return;
+
+		const svgPos = getSVGPoint(e);
+		const wp = { ...edge.waypoints[0] };
+
+		if (draggingFlowSegment.constraint === 'x') {
+			const raw = svgPos.x + draggingFlowSegment.offset;
+			wp.x = diagram.showGrid ? Math.round(raw / 20) * 20 : raw;
+		} else {
+			const raw = svgPos.y + draggingFlowSegment.offset;
+			wp.y = diagram.showGrid ? Math.round(raw / 20) * 20 : raw;
+		}
+
+		diagram.updateFlowEdge(edge.id, { waypoints: [wp] });
+	}
+
 	// DFD segment drag handlers (draw.io style)
 	function handleDFDLineMouseDown(flowId: string, e: MouseEvent) {
 		if (collab.isViewer || diagram.viewOnly || presentation.active) return;
@@ -1561,10 +1646,14 @@
 						y: svgPos.y + draggingDFDLabel!.offsetY
 					};
 				}
+			} else if (draggingFlowSegment) {
+				handleFlowSegmentDrag(e);
 			} else if (draggingDFDSegment) {
 				handleDFDSegmentDrag(e);
 			} else if (pendingDFDLineDrag) {
 				promotePendingDFDLineDrag(e);
+			} else if (pendingFlowEdgeDrag) {
+				promoteFlowEdgeDrag(e);
 			}
 		});
 	}
@@ -1674,6 +1763,11 @@
 				diagram.pushHistory('Move waypoint');
 				draggingWaypoint = null;
 			}
+			// Handle flowchart edge segment drag end
+			if (draggingFlowSegment) {
+				diagram.pushHistory('Move flow segment');
+				draggingFlowSegment = null;
+			}
 			// Handle DFD segment drag end
 			if (draggingDFDSegment) {
 				diagram.pushHistory('Move DFD segment');
@@ -1686,6 +1780,8 @@
 			}
 			// Clear pending DFD line drag (was just a click, not a drag)
 			pendingDFDLineDrag = null;
+			// Clear pending flowchart edge drag (was just a click, not a drag)
+			pendingFlowEdgeDrag = null;
 			// Physics: unpin dragged entities
 			if (diagram.physicsMode && dragging) {
 				for (const id of dragging.offsets.keys()) {
@@ -1855,6 +1951,7 @@
 		clearLongPressTimer();
 		if (touchState?.type === 'drag') {
 			diagram.localDraggingIds = new Set();
+			diagram.flushMovePush();
 		}
 		touchState = null;
 		// Clear cursor when finger lifts
@@ -2171,59 +2268,75 @@
 						{toNode}
 						offset={flowEdgeOffsets.get(edge.id) ?? 0}
 						{selected}
+						dying={diagram.dyingFlowEdgeIds.has(edge.id)}
 						onclick={() => { if (!collab.isViewer) diagram.selectRelationship(edge.id); }}
+						onlinemousedown={(e) => handleFlowEdgeMouseDown(edge.id, e)}
 					/>
 
-					<!-- Waypoint handles for selected edge -->
+					<!-- Segment midpoint handle for selected edge -->
 					{#if selected && !collab.isViewer && !diagram.viewOnly && !presentation.active}
-						{@const route = edge.waypoints ? [fromNode.position, ...edge.waypoints, toNode.position] : []}
-						{#if route.length > 0}
-							<WaypointHandles
-								{edge}
-								{route}
-								onDragWaypoint={(index, e) => handleWaypointDragStart(edge.id, index, e)}
-								onAddWaypoint={(index) => addWaypoint(edge.id, index)}
-								onRemoveWaypoint={(index) => removeWaypoint(edge.id, index)}
+						{@const edgeRoute = getFlowEdgeRoute(edge, fromNode, toNode, flowEdgeOffsets.get(edge.id) ?? 0)}
+						{#if edgeRoute.length >= 4}
+							{@const midX = (edgeRoute[1].x + edgeRoute[2].x) / 2}
+							{@const midY = (edgeRoute[1].y + edgeRoute[2].y) / 2}
+							<circle
+								cx={midX}
+								cy={midY}
+								r={5}
+								fill={colors.selectedStroke}
+								opacity={0.5}
+								style="pointer-events: none;"
 							/>
 						{/if}
 					{/if}
 				{/if}
 			{/each}
 
+			<!-- Dying flowchart nodes (fade-out animation using actual shape) -->
+			{#each diagram.dyingFlowNodes as node (node.id)}
+				<FlowNodeShape {node} dying={true} />
+			{/each}
+
 			<!-- Flowchart nodes -->
 			{#each diagram.flowNodes as node (node.id)}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<g
-					onmouseenter={() => hoveredFlowNodeId = node.id}
-					onmouseleave={() => hoveredFlowNodeId = null}
-				>
-					<FlowNodeShape
-						{node}
-						selected={diagram.selectedNodeIdSet.has(node.id)}
-						onmousedown={(e) => handleEntityMouseDown(node.id, e)}
-						onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
-						ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
-						oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
-						onStartEdit={startEditingFlowNode}
-						animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
-					/>
-
-					<!-- Connection handles (show only on hover) -->
-					{#if hoveredFlowNodeId === node.id && !dragging && !panning && !draggingConnection && !resizing && !collab.isViewer && !diagram.viewOnly && !presentation.active}
-						<FlowConnectionHandles
+				{@const isDying = diagram.dyingFlowNodes.some(d => d.id === node.id)}
+				{#if !isDying}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<g
+						onmouseenter={() => hoveredFlowNodeId = node.id}
+						onmouseleave={() => hoveredFlowNodeId = null}
+					>
+						<FlowNodeShape
 							{node}
-							onStartConnection={handleStartConnection}
+							selected={diagram.selectedNodeIdSet.has(node.id)}
+							onmousedown={(e) => handleEntityMouseDown(node.id, e)}
+							onclick={(e) => { if (!collab.isViewer && !e.shiftKey) diagram.selectEntity(node.id); }}
+							ontouchstart={(e) => handleEntityTouchStart(node.id, e)}
+							oncontextmenu={(e) => handleEntityContextMenu(node.id, e)}
+							onStartEdit={startEditingFlowNode}
+							animateIn={(presentation.active && presentation.newlyRevealedEntityIds.has(node.id)) || diagram.newEntityIds.has(node.id)}
 						/>
-					{/if}
 
-					<!-- Resize handles (show only when selected) -->
-					{#if diagram.selectedNodeIdSet.has(node.id) && !dragging && !panning && !draggingConnection && !collab.isViewer && !diagram.viewOnly && !presentation.active}
-						<ResizeHandles
-							{node}
-							onStartResize={(handle, e) => handleResizeStart(node.id, handle, e)}
-						/>
-					{/if}
-				</g>
+						<!-- Connection handles (show on hover or selected) -->
+						{#if (hoveredFlowNodeId === node.id || diagram.selectedNodeIdSet.has(node.id)) && !dragging && !panning && !draggingConnection && !resizing && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+							<FlowConnectionHandles
+								{node}
+								W={node.width || 140}
+								H={node.height || 60}
+								isSelected={diagram.selectedNodeIdSet.has(node.id)}
+								onStartConnection={handleStartConnection}
+							/>
+						{/if}
+
+						<!-- Resize handles (show only when selected) -->
+						{#if diagram.selectedNodeIdSet.has(node.id) && !dragging && !panning && !draggingConnection && !collab.isViewer && !diagram.viewOnly && !presentation.active}
+							<ResizeHandles
+								{node}
+								onStartResize={(handle, e) => handleResizeStart(node.id, handle, e)}
+							/>
+						{/if}
+					</g>
+				{/if}
 			{/each}
 
 			<!-- Temporary connection line while dragging — orthogonal -->

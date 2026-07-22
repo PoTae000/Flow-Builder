@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 	import {
 		convertAiDataToDiagram,
 		convertAiFlowchartToDiagram,
@@ -63,7 +64,7 @@
 		preview = null;
 
 		try {
-			const res = await fetch('/api/domain-starter', {
+			const res = await aiFetch('/api/domain-starter', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({

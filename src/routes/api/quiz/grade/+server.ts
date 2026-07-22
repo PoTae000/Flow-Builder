@@ -60,10 +60,9 @@ CRITICAL LANGUAGE RULES:
 - Example overallComment: "ทำได้ดีเลยนะ แค่ขาด entity สำหรับ payment ไป ลองเพิ่มดู"
 - Example correctParts: "สร้าง Customer กับ Order ได้ถูกต้อง", "ใส่ PK ครบทุก entity ดีมาก"`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			if (!body.scenario || !body.idealSolution || !body.userSolution) return false;
 			if (typeof body.scenario !== 'string' || body.scenario.length > 2000) return false;

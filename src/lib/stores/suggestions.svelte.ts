@@ -1,4 +1,5 @@
 import type { DiagramType } from '$lib/types/diagram';
+import { aiFetch } from '$lib/utils/ai-fetch';
 
 export interface Suggestion {
 	text: string;
@@ -24,7 +25,7 @@ class SuggestionState {
 		this.dismissed = false;
 
 		try {
-			const res = await fetch('/api/suggest-improvement', {
+			const res = await aiFetch('/api/suggest-improvement', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ ...payload, diagramType })
@@ -39,6 +40,7 @@ class SuggestionState {
 
 			if (!res.ok) {
 				this.suggestions = [];
+				this.lastFetchedAt = Date.now();
 				return;
 			}
 
@@ -58,6 +60,7 @@ class SuggestionState {
 			this.lastFetchedAt = Date.now();
 		} catch {
 			this.suggestions = [];
+			this.lastFetchedAt = Date.now();
 		} finally {
 			this.loading = false;
 		}
@@ -77,6 +80,7 @@ class SuggestionState {
 		this.suggestions = [];
 		this.dismissed = false;
 		this.loading = false;
+		this.lastFetchedAt = 0;
 	}
 }
 

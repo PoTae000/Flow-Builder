@@ -71,7 +71,7 @@ CRITICAL LANGUAGE & TONE RULES:
 - DO NOT use formal/academic language like "จำเป็นต้องกำหนด" or "ควรพิจารณา" — use "ลองเพิ่ม...", "ตรงนี้ขาด...", "แก้ง่ายๆ แค่..."
 - Keep it short, direct, and easy to understand.`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	const body: any = await request.json();
 
 	// M2: Body size check — prevent oversized payloads that bypass aiRequest's check
@@ -102,10 +102,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			userSub = payload.sub;
 		} catch { /* anonymous */ }
 
-		const kv = platform?.env?.DIAGRAMS_KV;
 		const identifier = userSub || `ip:${getClientIp(request)}`;
 		const limit = userSub ? 20 : 5;
-		const { allowed } = await checkRateLimit(kv, identifier, limit);
+		const { allowed } = await checkRateLimit(identifier, limit);
 		if (!allowed) {
 			throw error(429, 'Rate limit exceeded');
 		}
@@ -132,7 +131,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			headers: request.headers,
 			body: JSON.stringify(body)
 		}),
-		platform,
 		validateBody: (b) => {
 			const type: DiagramType = b.diagramType || 'er';
 			if (type === 'er') return Array.isArray(b.entities);

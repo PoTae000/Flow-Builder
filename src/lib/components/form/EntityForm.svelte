@@ -2,6 +2,7 @@
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import { i18n } from '$lib/i18n';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 
 	let entityName = $state('');
 	let suggesting = $state(false);
@@ -27,7 +28,7 @@
 		suggestions = [];
 		try {
 			const context = diagram.entities.map((e) => e.name).join(', ');
-			const res = await fetch('/api/suggest-name', {
+			const res = await aiFetch('/api/suggest-name', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({

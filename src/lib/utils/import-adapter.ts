@@ -7,6 +7,7 @@ import { generateId } from './id';
 export interface ImportedDiagramData {
 	entities: Entity[];
 	relationships: Relationship[];
+	hasPositions?: boolean;
 }
 
 export function convertToDiagramData(parsed: ParsedResult): ImportedDiagramData {
@@ -111,6 +112,7 @@ export interface AiParsedData {
 			type: 'primary_key' | 'foreign_key' | 'regular' | 'partial_key' | 'derived' | 'multivalued' | 'composite';
 		}>;
 		isWeak?: boolean;
+		position?: { x: number; y: number };
 	}>;
 	relationships: Array<{
 		name: string;
@@ -127,6 +129,10 @@ export function convertAiDataToDiagram(data: AiParsedData): ImportedDiagramData 
 	const relationships: Relationship[] = [];
 	const nameToId = new Map<string, string>();
 
+	// Scale 0-1000 → canvas coordinates
+	const SCALE = 1.2;
+	const OFFSET = 80;
+
 	for (const e of data.entities) {
 		const entityId = generateId();
 		nameToId.set(e.name.toLowerCase(), entityId);
@@ -141,7 +147,10 @@ export function convertAiDataToDiagram(data: AiParsedData): ImportedDiagramData 
 			id: entityId,
 			name: e.name,
 			attributes,
-			position: { x: 0, y: 0 },
+			position: {
+				x: (e.position?.x ?? 0) * SCALE + OFFSET,
+				y: (e.position?.y ?? 0) * SCALE + OFFSET
+			},
 			isWeak: e.isWeak ?? false
 		});
 	}
@@ -164,7 +173,12 @@ export function convertAiDataToDiagram(data: AiParsedData): ImportedDiagramData 
 		}
 	}
 
-	return { entities, relationships };
+	// Check if at least half of entities have valid positions
+	const hasPositions = data.entities.filter(e =>
+		e.position && (e.position.x > 0 || e.position.y > 0)
+	).length > data.entities.length / 2;
+
+	return { entities, relationships, hasPositions };
 }
 
 function mapCardinality(value: string): CardinalityType {

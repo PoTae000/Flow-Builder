@@ -4,6 +4,7 @@
 	import { i18n } from '$lib/i18n';
 	import { generateId } from '$lib/utils/id';
 	import { fireConfetti } from '$lib/utils/confetti';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 	import type { Entity, Relationship, CardinalityType } from '$lib/types/er';
 
 	let {
@@ -159,7 +160,7 @@
 		error = '';
 
 		try {
-			const res = await fetch('/api/quiz', {
+			const res = await aiFetch('/api/quiz', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ difficulty, domain: domain.trim() || undefined, diagramType: diagram.diagramType })
@@ -253,7 +254,7 @@
 				};
 			}
 
-			const res = await fetch('/api/quiz/grade', {
+			const res = await aiFetch('/api/quiz/grade', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({

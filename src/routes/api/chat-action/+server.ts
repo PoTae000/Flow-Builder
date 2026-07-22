@@ -115,10 +115,9 @@ function buildDFDContext(dfdNodes: any[], dfdFlows: any[]): string {
 const ALLOWED_ROLES = new Set(['user', 'assistant']);
 const MAX_MESSAGE_CONTENT_LENGTH = 4000;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			if (!Array.isArray(body.messages) || body.messages.length === 0) return false;
 			return validateEntityLimits(body);

@@ -92,10 +92,9 @@ const LANGUAGE_CONFIGS: Record<string, { name: string; ext: string; prompt: stri
 	}
 };
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			const type: DiagramType = body.diagramType || 'er';
 			if (!body.language || !LANGUAGE_CONFIGS[body.language]) return false;

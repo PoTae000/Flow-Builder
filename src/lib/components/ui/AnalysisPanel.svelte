@@ -56,6 +56,7 @@
 
 	import { diagram } from '$lib/stores/diagram.svelte';
 	import { suggestions } from '$lib/stores/suggestions.svelte';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 	import {
 		convertAiDataToDiagram,
 		convertAiFlowchartToDiagram,
@@ -117,7 +118,7 @@
 				};
 			}
 
-			const res = await fetch('/api/analyze', {
+			const res = await aiFetch('/api/analyze', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body),
@@ -191,7 +192,7 @@
 				};
 			}
 
-			const res = await fetch('/api/fix', {
+			const res = await aiFetch('/api/fix', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body),

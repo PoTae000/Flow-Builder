@@ -2,10 +2,9 @@ import type { RequestHandler } from './$types';
 import { aiRequest } from '$lib/server/ai-request';
 import { sanitizeName } from '$lib/utils/sanitize';
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) =>
 			typeof body.type === 'string' && ['entity', 'attribute', 'relationship'].includes(body.type),
 		buildMessages: (body) => {

@@ -84,7 +84,24 @@
       "WebFetch(domain:sqlpro.developpez.com)",
       "Bash(git remote set-url:*)",
       "Bash(git check-ignore:*)",
-      "Bash(xargs git cat-file:*)"
+      "Bash(xargs git cat-file:*)",
+      "WebFetch(domain:lh3.googleusercontent.com)",
+      "Bash(bunx wrangler secret:*)",
+      "Bash(printf:*)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "Bash(bunx wrangler types:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(bun wrangler deploy:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run check:*)",
+      "Bash(set PGPASSWORD=admin112233:*)",
+      "Bash(psql:*)",
+      "Bash($env:PGPASSWORD='admin112233')",
+      "Bash(PGPASSWORD=admin112233 psql:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run dev:*)",
+      "Bash(git log:*)"
     ]
   }
 }

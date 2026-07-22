@@ -1,11 +1,35 @@
 import type { Handle } from '@sveltejs/kit';
+import { initSchema } from '$lib/server/db';
+import { cleanupExpiredRateLimits } from '$lib/server/rate-limit';
+import { TRUSTED_ORIGINS as TRUSTED_ORIGINS_ENV } from '$env/static/private';
+
+// Auto-create tables on startup (non-blocking — app works without DB)
+let dbReady = false;
+initSchema()
+	.then(() => { dbReady = true; console.log('[db] Schema ready'); })
+	.catch((err) => console.error('[db] Schema init failed (app continues without DB):', err));
+
+// Cleanup expired rate limits every 10 minutes
+setInterval(() => {
+	if (dbReady) cleanupExpiredRateLimits();
+}, 10 * 60 * 1000);
+
+// Trusted origins: same-origin + known embedding hosts (from env TRUSTED_ORIGINS, comma-separated)
+const TRUSTED_ORIGINS = new Set(
+	TRUSTED_ORIGINS_ENV ? TRUSTED_ORIGINS_ENV.split(',').map(s => s.trim()).filter(Boolean) : []
+);
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const path = event.url.pathname;
 
-	// CORS: restrict API endpoints to same-origin only.
-	// Uses event.url.origin (derived from Host header validated by SvelteKit)
-	// instead of raw Host header comparison which is spoofable.
+	// Skip CORS for Stripe webhooks (Stripe sends POST without Origin header)
+	if (path === '/api/stripe/webhook') {
+		return resolve(event);
+	}
+
+	// CORS: restrict API endpoints to same-origin + trusted origins.
+	// Compare Origin with Host header (not event.url.origin) so reverse proxies
+	// and tunnels (Cloudflare Tunnel, ngrok, etc.) work correctly.
 	if (path.startsWith('/api/')) {
 		const origin = event.request.headers.get('origin');
 		// Allow GET requests without Origin (same-origin GET from fetch often lacks Origin)
@@ -13,17 +37,41 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (!origin && event.request.method !== 'GET') {
 			return new Response('Forbidden', { status: 403 });
 		}
-		// Cross-origin → block
-		if (origin && origin !== event.url.origin) {
-			return new Response('Forbidden', { status: 403 });
+		if (origin) {
+			const originHost = new URL(origin).host;
+			const requestHost = event.request.headers.get('host') || event.url.host;
+			const sameOrigin = originHost === requestHost;
+			if (!sameOrigin && !TRUSTED_ORIGINS.has(origin)) {
+				return new Response('Forbidden', { status: 403 });
+			}
+		}
+
+		// Handle CORS preflight
+		if (event.request.method === 'OPTIONS' && origin) {
+			return new Response(null, {
+				status: 204,
+				headers: {
+					'Access-Control-Allow-Origin': origin,
+					'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+					'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+					'Access-Control-Max-Age': '86400'
+				}
+			});
 		}
 	}
 
 	const response = await resolve(event);
 
-	// Allow Google Sign-In popup to communicate via postMessage
-	response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+	// Set CORS headers for trusted cross-origin requests
+	const origin = event.request.headers.get('origin');
+	if (origin && TRUSTED_ORIGINS.has(origin) && path.startsWith('/api/')) {
+		response.headers.set('Access-Control-Allow-Origin', origin);
+		response.headers.set('Access-Control-Allow-Credentials', 'true');
+	}
+
 	// Security headers
+	// Allow Google Sign-In popup to communicate back via postMessage
+	response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 	response.headers.set('X-Content-Type-Options', 'nosniff');
 	// Allow embedding from HyperTech desktop
 	// X-Frame-Options removed — using CSP frame-ancestors instead
@@ -38,14 +86,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// mitigated by the restrictive default-src and other CSP directives.
 	response.headers.set('Content-Security-Policy', [
 		"default-src 'self'",
-		"script-src 'self' accounts.google.com static.cloudflareinsights.com 'unsafe-inline'",
+		"script-src 'self' accounts.google.com 'unsafe-inline'",
 		"style-src 'self' fonts.googleapis.com accounts.google.com 'unsafe-inline'",
 		"font-src fonts.gstatic.com",
 		"img-src 'self' data: blob: *.googleusercontent.com",
-		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com wss://signaling.yjs.dev wss://*.onrender.com",
+		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com fonts.googleapis.com wss://signaling.yjs.dev wss://*.onrender.com",
 		"frame-src accounts.google.com",
+		"worker-src 'self'",
 		"object-src 'none'",
-		"frame-ancestors 'self' https://hypertech.suepskun.online"
+		`frame-ancestors 'self'${TRUSTED_ORIGINS.size ? ' ' + [...TRUSTED_ORIGINS].join(' ') : ''}`
 	].join('; '));
 
 	return response;

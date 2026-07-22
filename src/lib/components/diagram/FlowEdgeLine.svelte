@@ -9,14 +9,18 @@
 		toNode,
 		offset = 0,
 		selected = false,
-		onclick
+		dying = false,
+		onclick,
+		onlinemousedown
 	}: {
 		edge: FlowEdge;
 		fromNode: FlowNode;
 		toNode: FlowNode;
 		offset?: number;
 		selected?: boolean;
+		dying?: boolean;
 		onclick?: () => void;
+		onlinemousedown?: (e: MouseEvent) => void;
 	} = $props();
 
 	const colors = $derived(theme.colors);
@@ -60,77 +64,43 @@
 
 	const LOOP_OFFSET = 40;
 
-	const route = $derived.by(() => {
-		// If edge has custom waypoints, use them
-		if (edge.waypoints && edge.waypoints.length > 0) {
-			const dx = toNode.position.x - fromNode.position.x;
-			const dy = toNode.position.y - fromNode.position.y;
-
-			let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
-			let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
-
-			// Choose fromSide
-			if (fromNode.type === 'decision') {
-				if (Math.abs(dx) > Math.abs(dy) * 1.5) {
-					fromSide = dx > 0 ? 'right' : 'left';
-				} else {
-					fromSide = 'bottom';
-				}
-			} else {
-				fromSide = dy >= 0 ? 'bottom' : 'top';
-			}
-
-			// Choose toSide
-			if (toNode.type === 'decision') {
-				toSide = 'top';
-			} else {
-				toSide = dy >= 0 ? 'top' : 'bottom';
-			}
-
-			const fp = getPort(fromNode, fromSide);
-			const tp = getPort(toNode, toSide);
-
-			return [fp, ...edge.waypoints, tp];
-		}
-
-		// Otherwise, use default orthogonal routing
+	function getFromSide(): 'top' | 'bottom' | 'left' | 'right' {
 		const dx = toNode.position.x - fromNode.position.x;
 		const dy = toNode.position.y - fromNode.position.y;
-
-		let fromSide: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
-		let toSide: 'top' | 'bottom' | 'left' | 'right' = 'top';
-
-		// Choose fromSide
 		if (fromNode.type === 'decision') {
-			if (Math.abs(dx) > Math.abs(dy) * 1.5) {
-				fromSide = dx > 0 ? 'right' : 'left';
-			} else {
-				fromSide = 'bottom';
-			}
-		} else {
-			fromSide = dy >= 0 ? 'bottom' : 'top';
+			return Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'right' : 'left') : 'bottom';
 		}
+		return dy >= 0 ? 'bottom' : 'top';
+	}
 
-		// Choose toSide
-		if (toNode.type === 'decision') {
-			toSide = 'top';
-		} else {
-			toSide = dy >= 0 ? 'top' : 'bottom';
-		}
+	function getToSide(): 'top' | 'bottom' | 'left' | 'right' {
+		const dy = toNode.position.y - fromNode.position.y;
+		return toNode.type === 'decision' ? 'top' : (dy >= 0 ? 'top' : 'bottom');
+	}
 
+	const route = $derived.by(() => {
+		const fromSide = getFromSide();
+		const toSide = getToSide();
 		const fp = getPort(fromNode, fromSide);
 		const tp = getPort(toNode, toSide);
 
-		// Simple 4-point orthogonal path
-		const midY = (fp.y + tp.y) / 2 + offset;
+		// Single waypoint: use as corridor position for 4-point orthogonal path
+		if (edge.waypoints && edge.waypoints.length === 1) {
+			const wp = edge.waypoints[0];
+			if (fromSide === 'top' || fromSide === 'bottom') {
+				return [fp, { x: fp.x, y: wp.y }, { x: tp.x, y: wp.y }, tp];
+			}
+			return [fp, { x: wp.x, y: fp.y }, { x: wp.x, y: tp.y }, tp];
+		}
 
-		// Vertical-first path (most common for top-to-bottom flow)
-		return [
-			fp,
-			{ x: fp.x, y: midY },
-			{ x: tp.x, y: midY },
-			tp
-		];
+		// 2+ waypoints: straight-through (backward compatible)
+		if (edge.waypoints && edge.waypoints.length > 1) {
+			return [fp, ...edge.waypoints, tp];
+		}
+
+		// No waypoints: default orthogonal routing
+		const midY = (fp.y + tp.y) / 2 + offset;
+		return [fp, { x: fp.x, y: midY }, { x: tp.x, y: midY }, tp];
 	});
 
 	const pathD = $derived.by(() => {
@@ -221,6 +191,7 @@
 <g
 	class="flow-edge"
 	class:selected
+	class:dying
 	{onclick}
 	style="cursor: pointer;"
 >
@@ -230,6 +201,7 @@
 		stroke="transparent"
 		stroke-width="12"
 		fill="none"
+		onmousedown={(e) => { if (onlinemousedown && e.button === 0) { e.stopPropagation(); onlinemousedown(e); } }}
 	/>
 
 	<!-- Visible line -->
@@ -280,3 +252,14 @@
 		</text>
 	{/if}
 </g>
+
+<style>
+	@keyframes edgeFadeOut {
+		0%   { opacity: 1; }
+		100% { opacity: 0; }
+	}
+	.flow-edge.dying {
+		animation: edgeFadeOut 0.5s ease-in forwards;
+		pointer-events: none;
+	}
+</style>

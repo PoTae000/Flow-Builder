@@ -115,6 +115,12 @@ export class DiagramState {
 	// Animation: relationship fade-out on delete
 	dyingRelationshipIds = $state<Set<string>>(new Set());
 
+	// Animation: Flowchart node dying (fade-out ghosts)
+	dyingFlowNodes = $state<Array<FlowNode & { _dyingRect?: { x: number; y: number; width: number; height: number } }>>([]);
+
+	// Animation: Flowchart edge dying (line undraw)
+	dyingFlowEdgeIds = $state<Set<string>>(new Set());
+
 	// Animation: DFD node dying (fade-out ghosts)
 	dyingDFDNodes = $state<Array<DFDNode & { _dyingRect?: { x: number; y: number; width: number; height: number } }>>([]);
 
@@ -495,6 +501,10 @@ export class DiagramState {
 	private _movePendingIds = new Set<string>();
 	private _moveMultiDrag = false;
 
+	// Drag awareness: stream positions via lightweight awareness channel instead of Y.Doc
+	private _dragAwarenessTimer: ReturnType<typeof setTimeout> | null = null;
+	private _dragAwarenessPending = new Map<string, { x: number; y: number }>();
+
 	/** Call before starting a multi-entity drag to enable throttling */
 	startMultiDrag() { this._moveMultiDrag = true; }
 
@@ -527,19 +537,20 @@ export class DiagramState {
 			entity.position = position;
 
 			const c = getCollab();
-			if (c) {
-				if (!this._moveMultiDrag) {
-					// Single entity: push immediately (no lag)
-					c.pushEntityChange(entity);
-				} else {
-					// Multi-drag: throttle to avoid flooding Y.js
-					this._movePendingIds.add(id);
-					if (!this._moveThrottleTimer) {
-						this._moveThrottleTimer = setTimeout(() => {
-							this._moveThrottleTimer = null;
-							this._flushPendingMoves(c);
-						}, 100);
-					}
+			if (c?.connected) {
+				// Stream position via awareness (lightweight, no CRDT overhead)
+				this._dragAwarenessPending.set(id, { x: position.x, y: position.y });
+				this._movePendingIds.add(id);
+				if (!this._dragAwarenessTimer) {
+					this._dragAwarenessTimer = setTimeout(() => {
+						this._dragAwarenessTimer = null;
+						if (this._dragAwarenessPending.size > 0) {
+							const positions: Record<string, { x: number; y: number }> = {};
+							for (const [k, v] of this._dragAwarenessPending) positions[k] = v;
+							c.broadcastDragPositions(positions);
+							this._dragAwarenessPending.clear();
+						}
+					}, 50);
 				}
 			}
 		}
@@ -568,7 +579,18 @@ export class DiagramState {
 			clearTimeout(this._moveThrottleTimer);
 			this._moveThrottleTimer = null;
 		}
+		// Clear drag awareness state
+		if (this._dragAwarenessTimer) {
+			clearTimeout(this._dragAwarenessTimer);
+			this._dragAwarenessTimer = null;
+		}
+		this._dragAwarenessPending.clear();
 		const c = getCollab();
+		if (c?.connected) {
+			// Signal remote clients that drag is done (clear lerp targets)
+			c.broadcastDragStop();
+		}
+		// Commit final positions to Y.Doc
 		if (c && this._movePendingIds.size > 0) {
 			this._flushPendingMoves(c);
 		}
@@ -1704,6 +1726,41 @@ export class DiagramState {
 		this.timelinePreviewActive = false;
 	}
 
+	/** Preview arbitrary diagram data (e.g. from cloud version) without pushing to history */
+	previewData(data: import('$lib/types/session').DiagramData) {
+		if (!this.timelinePreviewActive) {
+			this._previewSavedState = this.snapshot();
+			this.timelinePreviewActive = true;
+		}
+		this.restore(JSON.stringify({
+			entities: data.entities ?? [],
+			relationships: data.relationships ?? [],
+			notes: data.notes ?? [],
+			flowNodes: data.flowNodes ?? [],
+			flowEdges: data.flowEdges ?? [],
+			dfdNodes: data.dfdNodes ?? [],
+			dfdFlows: data.dfdFlows ?? []
+		}));
+	}
+
+	/** Load diagram data directly (e.g. after cloud restore), pushes to history */
+	loadData(data: import('$lib/types/session').DiagramData) {
+		this.pushHistory('Cloud restore');
+		this.entities = data.entities ?? [];
+		this.relationships = data.relationships ?? [];
+		this.notes = data.notes ?? [];
+		this.notation = data.notation ?? 'crows-foot';
+		this.diagramFont = data.diagramFont ?? "'TH Sarabun PSK', 'Sarabun', sans-serif";
+		this.flowNodes = data.flowNodes ?? [];
+		this.flowEdges = data.flowEdges ?? [];
+		this.dfdNodes = data.dfdNodes ?? [];
+		this.dfdFlows = data.dfdFlows ?? [];
+		if (data.panX !== undefined) this.panX = data.panX;
+		if (data.panY !== undefined) this.panY = data.panY;
+		if (data.zoom !== undefined) this.zoom = data.zoom;
+		getCollab()?.pushFullState();
+	}
+
 	applyTranslation(mapping: {
 		entities: Record<string, string>;
 		attributes: Record<string, string>;
@@ -1856,12 +1913,29 @@ export class DiagramState {
 
 	removeFlowNode(id: string) {
 		this.pushHistory('Remove flow node');
+		// Trigger dying animation
+		const dying = this.flowNodes.find((n) => n.id === id);
+		if (dying) {
+			this.dyingFlowNodes = [...this.dyingFlowNodes, { ...dying }];
+			setTimeout(() => { this.dyingFlowNodes = this.dyingFlowNodes.filter((n) => n.id !== id); }, 700);
+		}
 		const c = getCollab();
+		// Trigger dying animation for connected edges
+		const dyingEdgeIds = this.flowEdges.filter(e => e.fromNodeId === id || e.toNodeId === id).map(e => e.id);
+		if (dyingEdgeIds.length > 0) {
+			this.dyingFlowEdgeIds = new Set([...this.dyingFlowEdgeIds, ...dyingEdgeIds]);
+			// Delay edge+node removal until edge animation completes (edges need fromNode/toNode to render)
+			setTimeout(() => {
+				this.flowEdges = this.flowEdges.filter(e => !dyingEdgeIds.includes(e.id));
+				this.dyingFlowEdgeIds = new Set([...this.dyingFlowEdgeIds].filter(eid => !dyingEdgeIds.includes(eid)));
+				this.flowNodes = this.flowNodes.filter((n) => n.id !== id);
+			}, 500);
+		} else {
+			this.flowNodes = this.flowNodes.filter((n) => n.id !== id);
+		}
 		for (const e of this.flowEdges) {
 			if (e.fromNodeId === id || e.toNodeId === id) c?.pushFlowEdgeRemove(e.id);
 		}
-		this.flowEdges = this.flowEdges.filter((e) => e.fromNodeId !== id && e.toNodeId !== id);
-		this.flowNodes = this.flowNodes.filter((n) => n.id !== id);
 		this.selectedNodeIds = this.selectedNodeIds.filter((nid) => nid !== id);
 		c?.pushFlowNodeRemove(id);
 	}
@@ -1874,17 +1948,20 @@ export class DiagramState {
 			}
 			node.position = position;
 			const c = getCollab();
-			if (c) {
-				if (!this._moveMultiDrag) {
-					c.pushFlowNodeChange(node);
-				} else {
-					this._movePendingIds.add('flow:' + id);
-					if (!this._moveThrottleTimer) {
-						this._moveThrottleTimer = setTimeout(() => {
-							this._moveThrottleTimer = null;
-							this._flushPendingMoves(c);
-						}, 100);
-					}
+			if (c?.connected) {
+				const key = 'flow:' + id;
+				this._dragAwarenessPending.set(key, { x: position.x, y: position.y });
+				this._movePendingIds.add(key);
+				if (!this._dragAwarenessTimer) {
+					this._dragAwarenessTimer = setTimeout(() => {
+						this._dragAwarenessTimer = null;
+						if (this._dragAwarenessPending.size > 0) {
+							const positions: Record<string, { x: number; y: number }> = {};
+							for (const [k, v] of this._dragAwarenessPending) positions[k] = v;
+							c.broadcastDragPositions(positions);
+							this._dragAwarenessPending.clear();
+						}
+					}, 50);
 				}
 			}
 		}
@@ -1915,8 +1992,14 @@ export class DiagramState {
 
 	removeFlowEdge(id: string) {
 		this.pushHistory('Remove flow edge');
-		this.flowEdges = this.flowEdges.filter((e) => e.id !== id);
 		if (this.selectedEdgeId === id) this.selectedEdgeId = null;
+		// Trigger dying animation
+		this.dyingFlowEdgeIds = new Set([...this.dyingFlowEdgeIds, id]);
+		setTimeout(() => {
+			if (!this.dyingFlowEdgeIds.has(id)) return;
+			this.flowEdges = this.flowEdges.filter((e) => e.id !== id);
+			this.dyingFlowEdgeIds = new Set([...this.dyingFlowEdgeIds].filter(eid => eid !== id));
+		}, 500);
 		getCollab()?.pushFlowEdgeRemove(id);
 	}
 
@@ -2029,17 +2112,20 @@ export class DiagramState {
 			}
 			node.position = position;
 			const c = getCollab();
-			if (c) {
-				if (!this._moveMultiDrag) {
-					c.pushDFDNodeChange(node);
-				} else {
-					this._movePendingIds.add('dfd:' + id);
-					if (!this._moveThrottleTimer) {
-						this._moveThrottleTimer = setTimeout(() => {
-							this._moveThrottleTimer = null;
-							this._flushPendingMoves(c);
-						}, 100);
-					}
+			if (c?.connected) {
+				const key = 'dfd:' + id;
+				this._dragAwarenessPending.set(key, { x: position.x, y: position.y });
+				this._movePendingIds.add(key);
+				if (!this._dragAwarenessTimer) {
+					this._dragAwarenessTimer = setTimeout(() => {
+						this._dragAwarenessTimer = null;
+						if (this._dragAwarenessPending.size > 0) {
+							const positions: Record<string, { x: number; y: number }> = {};
+							for (const [k, v] of this._dragAwarenessPending) positions[k] = v;
+							c.broadcastDragPositions(positions);
+							this._dragAwarenessPending.clear();
+						}
+					}, 50);
 				}
 			}
 		}

@@ -7,6 +7,7 @@
 		node,
 		selected = false,
 		animateIn = false,
+		dying = false,
 		onmousedown,
 		onclick,
 		ontouchstart,
@@ -16,6 +17,7 @@
 		node: FlowNode;
 		selected?: boolean;
 		animateIn?: boolean;
+		dying?: boolean;
 		onmousedown?: (e: MouseEvent) => void;
 		onclick?: (e: MouseEvent) => void;
 		ontouchstart?: (e: TouchEvent) => void;
@@ -36,6 +38,7 @@
 	class="flow-node"
 	class:selected
 	class:animate-in={animateIn}
+	class:dying
 	role="button"
 	tabindex="0"
 	aria-label="Flow node: {node.name}"
@@ -53,15 +56,16 @@
 	<!-- Selection highlight -->
 	{#if selected}
 		<rect
-			x={cx - W / 2 - 2}
-			y={cy - H / 2 - 2}
-			width={W + 4}
-			height={H + 4}
-			rx={node.type === 'start-end' ? (node.borderRadius || 20) + 2 : (node.type === 'connector' || node.type === 'delay' ? 22 : 2)}
+			x={cx - W / 2 - 4}
+			y={cy - H / 2 - 4}
+			width={W + 8}
+			height={H + 8}
+			rx={node.type === 'start-end' ? (node.borderRadius || 20) + 4 : (node.type === 'connector' || node.type === 'delay' ? 24 : 4)}
 			fill="none"
 			stroke={colors.selectedStroke}
-			stroke-width="2.5"
-			opacity="0.5"
+			stroke-width="1.5"
+			stroke-dasharray="5 3"
+			opacity="0.7"
 		/>
 	{/if}
 
@@ -270,6 +274,16 @@
 		animation: nodeAppear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 		transform-origin: center;
 		transform-box: fill-box;
+	}
+	@keyframes nodeDying {
+		0%   { opacity: 1; transform: scale(1); }
+		100% { opacity: 0; transform: scale(0.7); }
+	}
+	.flow-node.dying {
+		animation: nodeDying 0.6s ease-in forwards;
+		transform-origin: center;
+		transform-box: fill-box;
+		pointer-events: none;
 	}
 	.flow-node { transition: filter 0.15s ease; }
 	.flow-node:hover { filter: drop-shadow(0 0 4px rgba(59,130,246,0.2)); }

@@ -29,10 +29,9 @@ Return ONLY valid JSON in this format:
 
 IMPORTANT: Every entity ID from the input MUST appear in the output positions.`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			if (!Array.isArray(body.entities) || body.entities.length === 0) return false;
 			return validateEntityLimits(body);

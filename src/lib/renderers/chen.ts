@@ -1,4 +1,4 @@
-import type { Entity, CardinalityType } from '$lib/types/er';
+import type { Entity, Relationship, CardinalityType } from '$lib/types/er';
 import type { Rect } from '$lib/types/geometry';
 import type { NotationRenderer } from './types.ts';
 
@@ -33,6 +33,11 @@ export class ChenRenderer implements NotationRenderer {
 			'1..N': '1..N'
 		};
 		return map[cardinality] ?? cardinality;
+	}
+
+	getStrokeDashArray(_relationship: Relationship): string | undefined {
+		// Chen uses double diamond for identifying relationships, not line style
+		return undefined;
 	}
 
 	getMarkerDefs(): string {

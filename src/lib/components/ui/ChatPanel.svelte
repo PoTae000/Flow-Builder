@@ -4,6 +4,7 @@
 	import type { ChatMessage } from '$lib/stores/collab.svelte';
 	import { agent } from '$lib/stores/agent.svelte';
 	import type { AgentAction } from '$lib/types/agent';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 	import { tick } from 'svelte';
 
 	let {
@@ -81,7 +82,7 @@
 			'สร้างระบบ E-commerce ให้หน่อย',
 			'Diagram นี้ Normalize ถูกมั้ย?',
 			'ควรเพิ่ม Entity อะไรอีก?',
-			'ออกแบบระบบจองโรงแรมให้หน่��ย'
+			'ออกแบบระบบจองโรงแรมให\u0e49หน\u0e48อย'
 		]
 	);
 
@@ -96,7 +97,7 @@
 	function formatActionSummary(actions: AgentAction[]): string {
 		const counts: Record<string, number> = {};
 		for (const a of actions) {
-			const key = a.op.startsWith('add-') ? 'เพ��่ม' : a.op.startsWith('remove-') ? 'ลบ' : '���ก้ไ��';
+			const key = a.op.startsWith('add-') ? '\u0e40\u0e1e\u0e34\u0e48\u0e21' : a.op.startsWith('remove-') ? '\u0e25\u0e1a' : '\u0e41\u0e01\u0e49\u0e44\u0e02';
 			counts[key] = (counts[key] || 0) + 1;
 		}
 		return Object.entries(counts).map(([k, v]) => `${k} ${v} รายการ`).join(', ');
@@ -194,7 +195,7 @@
 				body.relationships = $state.snapshot(diagram.relationships);
 			}
 
-			const res = await fetch('/api/chat-action', {
+			const res = await aiFetch('/api/chat-action', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
@@ -338,7 +339,7 @@
 		<div class="border-b border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-4 py-3">
 			<div class="mb-2 flex items-center justify-between">
 				<span class="text-[11px] font-medium text-[var(--ui-text)]">
-					{agent.running ? 'กำลังทำงาน...' : 'เสร็จ��ล้ว'}
+					{agent.running ? '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e17\u0e33\u0e07\u0e32\u0e19...' : '\u0e40\u0e2a\u0e23\u0e47\u0e08\u0e41\u0e25\u0e49\u0e27'}
 				</span>
 				{#if agent.running}
 					<button
@@ -509,7 +510,7 @@
 			<textarea
 				bind:value={input}
 				onkeydown={handleKeydown}
-				placeholder={agentMode ? 'สั่ง AI สร้า��� diagram...' : 'พิมพ์ข้อความ...'}
+				placeholder={agentMode ? '\u0e2a\u0e31\u0e48\u0e07 AI \u0e2a\u0e23\u0e49\u0e32\u0e07 diagram...' : '\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21...'}
 				rows="1"
 				maxlength={MAX_MSG_LENGTH}
 				class="max-h-24 min-h-[36px] flex-1 resize-none rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-secondary)] px-3 py-2 text-xs text-[var(--ui-text)] placeholder-[var(--ui-text-muted)] focus:ring-1 focus:ring-[var(--ui-text-secondary)]/20 focus:outline-none"

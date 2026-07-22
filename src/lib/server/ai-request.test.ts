@@ -17,8 +17,9 @@ vi.mock('@sveltejs/kit', () => ({
 	}
 }));
 
-vi.mock('$env/dynamic/private', () => ({
-	env: { GROQ_API_KEY: 'test-key-123' }
+vi.mock('$env/static/private', () => ({
+	GROQ_API_KEY: 'test-key-123',
+	DATABASE_URL: 'postgresql://test@localhost/test'
 }));
 
 vi.mock('$env/static/public', () => ({
@@ -34,6 +35,27 @@ vi.mock('$lib/server/google-verify', () => ({
 vi.mock('$lib/server/rate-limit', () => ({
 	checkRateLimit: vi.fn(async () => ({ allowed: true, remaining: 4 }))
 }));
+
+vi.mock('$lib/server/db', () => ({
+	pool: { query: vi.fn() }
+}));
+
+// Mock groq-sdk — use vi.hoisted so mockCreate is available in the hoisted mock factory
+const { mockCreate } = vi.hoisted(() => {
+	const mockCreate = vi.fn();
+	return { mockCreate };
+});
+vi.mock('groq-sdk', () => {
+	return {
+		default: class Groq {
+			chat = {
+				completions: {
+					create: mockCreate
+				}
+			};
+		}
+	};
+});
 
 // Now import the module under test
 import { aiRequest } from './ai-request';
@@ -54,6 +76,7 @@ describe('aiRequest', () => {
 		vi.restoreAllMocks();
 		// Re-apply rate limit mock
 		mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4 });
+		mockCreate.mockReset();
 	});
 
 	it('rejects invalid body when validateBody returns false', async () => {
@@ -62,7 +85,6 @@ describe('aiRequest', () => {
 		await expect(
 			aiRequest({
 				request,
-				platform: undefined,
 				validateBody: (body) => Array.isArray(body.entities),
 				buildMessages: () => [{ role: 'user', content: 'test' }]
 			})
@@ -75,123 +97,75 @@ describe('aiRequest', () => {
 		const request = makeRequest({ entities: [] });
 		const response = await aiRequest({
 			request,
-			platform: undefined,
 			buildMessages: () => [{ role: 'user', content: 'test' }]
 		});
 
 		expect(response.status).toBe(429);
-		expect(response.headers.get('X-RateLimit-Remaining')).toBe('0');
 	});
 
 	it('handles malformed AI JSON response gracefully', async () => {
-		// Mock fetch to return malformed JSON
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				JSON.stringify({
-					choices: [{ message: { content: 'not valid json {{{' } }]
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
-		);
+		mockCreate.mockResolvedValue({
+			choices: [{ message: { content: 'not valid json {{{' } }]
+		});
 
-		try {
-			const request = makeRequest({ entities: [{ id: '1' }] });
-			await expect(
-				aiRequest({
-					request,
-					platform: undefined,
-					buildMessages: () => [{ role: 'user', content: 'test' }],
-					jsonMode: true
-				})
-			).rejects.toMatchObject({ status: 502 });
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		const request = makeRequest({ entities: [{ id: '1' }] });
+		await expect(
+			aiRequest({
+				request,
+				buildMessages: () => [{ role: 'user', content: 'test' }],
+				jsonMode: true
+			})
+		).rejects.toMatchObject({ status: 502 });
 	});
 
-	it('returns valid response with rate limit header on success', async () => {
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				JSON.stringify({
-					choices: [{ message: { content: '{"score": 85}' } }]
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
-		);
+	it('returns valid response on success', async () => {
+		mockCreate.mockResolvedValue({
+			choices: [{ message: { content: '{"score": 85}' } }]
+		});
 
-		try {
-			const request = makeRequest({ entities: [{ id: '1' }] });
-			const response = await aiRequest({
-				request,
-				platform: undefined,
-				buildMessages: () => [{ role: 'user', content: 'analyze' }],
-				jsonMode: true
-			});
+		const request = makeRequest({ entities: [{ id: '1' }] });
+		const response = await aiRequest({
+			request,
+			buildMessages: () => [{ role: 'user', content: 'analyze' }],
+			jsonMode: true
+		});
 
-			expect(response.status).toBe(200);
-			expect(response.headers.get('X-RateLimit-Remaining')).toBe('4');
-			const data: any = await response.json();
-			expect(data.score).toBe(85);
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data.score).toBe(85);
 	});
 
 	it('uses transformResponse when provided', async () => {
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				JSON.stringify({
-					choices: [{ message: { content: 'some code here' } }]
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
-		);
+		mockCreate.mockResolvedValue({
+			choices: [{ message: { content: 'some code here' } }]
+		});
 
-		try {
-			const request = makeRequest({ language: 'sql-mysql' });
-			const response = await aiRequest({
-				request,
-				platform: undefined,
-				buildMessages: () => [{ role: 'user', content: 'generate' }],
-				jsonMode: false,
-				transformResponse: (text) => ({ code: text, language: 'MySQL' })
-			});
+		const request = makeRequest({ language: 'sql-mysql' });
+		const response = await aiRequest({
+			request,
+			buildMessages: () => [{ role: 'user', content: 'generate' }],
+			jsonMode: false,
+			transformResponse: (text) => ({ code: text, language: 'MySQL' })
+		});
 
-			const data: any = await response.json();
-			expect(data.code).toBe('some code here');
-			expect(data.language).toBe('MySQL');
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		const data: any = await response.json();
+		expect(data.code).toBe('some code here');
+		expect(data.language).toBe('MySQL');
 	});
 
 	it('wraps plain text response in { content } when jsonMode is false', async () => {
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				JSON.stringify({
-					choices: [{ message: { content: 'Hello, สวัสดี!' } }]
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
-		);
+		mockCreate.mockResolvedValue({
+			choices: [{ message: { content: 'Hello, สวัสดี!' } }]
+		});
 
-		try {
-			const request = makeRequest({ messages: [{ role: 'user', content: 'hi' }] });
-			const response = await aiRequest({
-				request,
-				platform: undefined,
-				buildMessages: () => [{ role: 'user', content: 'hi' }],
-				jsonMode: false
-			});
+		const request = makeRequest({ messages: [{ role: 'user', content: 'hi' }] });
+		const response = await aiRequest({
+			request,
+			buildMessages: () => [{ role: 'user', content: 'hi' }],
+			jsonMode: false
+		});
 
-			const data: any = await response.json();
-			expect(data.content).toBe('Hello, สวัสดี!');
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		const data: any = await response.json();
+		expect(data.content).toBe('Hello, สวัสดี!');
 	});
 });

@@ -55,10 +55,9 @@ const FLOWCHART_PROMPT = `คุณเป็นผู้เชี่ยวชา
 - text ต้องสั้นกระชับ ใช้เป็น chip label ได้
 - ถ้า diagram ดีอยู่แล้ว ให้แนะนำ optimization เล็กน้อย`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			const type: DiagramType = body.diagramType || 'er';
 			if (type === 'context') {

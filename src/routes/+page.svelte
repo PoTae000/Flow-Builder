@@ -31,6 +31,9 @@
 	import { pickSaveLocation, writeToFile, isFileSystemSupported, isInIframe, downloadAsFile } from '$lib/utils/file-system';
 	import { suggestions } from '$lib/stores/suggestions.svelte';
 	import SuggestionBar from '$lib/components/ui/SuggestionBar.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
+	import UpgradeModal from '$lib/components/ui/UpgradeModal.svelte';
+	import AdminPanel from '$lib/components/ui/AdminPanel.svelte';
 
 
 	let ready = $state(false);
@@ -408,6 +411,15 @@
 	onMount(async () => {
 		document.addEventListener('visibilitychange', handleVisibility);
 
+		// Handle Stripe checkout return
+		const params = new URLSearchParams(window.location.search);
+		if (params.get('checkout') === 'success') {
+			// Remove query param from URL
+			window.history.replaceState({}, '', window.location.pathname);
+			// Poll for plan update (webhook may be delayed)
+			pollPlanUpdate();
+		}
+
 		// Check for share link first
 		const shareData = await parseShareHash(window.location.hash);
 		if (shareData) {
@@ -440,6 +452,19 @@
 		return () => {
 			sync.stopPolling();
 		};
+	});
+
+	// Drain offline queue + re-sync when coming back online
+	$effect(() => {
+		if (ui.isOnline && ready && auth.isSignedIn && sync.canSync) {
+			sync.drainQueue().then(() => {
+				ui.refreshQueueCount();
+				session.triggerFullSync();
+			});
+		}
+		if (!ui.isOnline) {
+			ui.refreshQueueCount();
+		}
 	});
 
 	// Sync auto-save with active diagram
@@ -527,6 +552,27 @@
 		}
 	}
 
+	/** Poll /api/user/plan until it returns 'advanced' (max 30s) */
+	async function pollPlanUpdate() {
+		const token = sessionStorage.getItem('er-diagram:id-token');
+		if (!token) return;
+		for (let i = 0; i < 10; i++) {
+			await new Promise(r => setTimeout(r, 3000));
+			try {
+				const res = await fetch('/api/user/plan', {
+					headers: { 'Authorization': `Bearer ${token}` }
+				});
+				if (res.ok) {
+					const data = await res.json();
+					if (data.plan === 'advanced') {
+						auth.updatePlan('advanced', undefined, data.planExpiresAt ?? null);
+						return;
+					}
+				}
+			} catch { /* continue polling */ }
+		}
+	}
+
 	// Watch for Google sign-in completing while on login screen
 	$effect(() => {
 		if (showLogin && auth.isSignedIn) {
@@ -570,6 +616,16 @@
 		}
 	});
 
+	// Reset suggestions when diagram type changes
+	let prevDiagramType: string | null = null;
+	$effect(() => {
+		const dt = diagram.diagramType;
+		if (prevDiagramType !== null && prevDiagramType !== dt) {
+			suggestions.reset();
+		}
+		prevDiagramType = dt;
+	});
+
 	// Smart suggestions: auto-fetch after diagram changes (debounced 3s)
 	let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -588,7 +644,8 @@
 			: dt === 'flowchart' ? flowNodeCount >= 2
 			: false;
 
-		if (!hasEnough || collab.connected || !suggestions.canFetch) {
+		// Suppress suggestions for non-advanced users (except admin)
+		if (!hasEnough || collab.connected || !suggestions.canFetch || (!auth.isAdmin && auth.plan !== 'advanced')) {
 			return;
 		}
 		if (suggestionTimer) clearTimeout(suggestionTimer);
@@ -743,7 +800,7 @@
 						</div>
 					</div>
 				{:else}
-					<div data-onboarding="toolbar" class="toolbar-container absolute top-3 right-3 z-10 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat}>
+					<div data-onboarding="toolbar" class="toolbar-container absolute top-3 right-3 z-50 max-w-[calc(100vw-1.5rem)]" class:hidden={showChat || ui.userMenuOpen}>
 						<Toolbar
 							onexport={() => showExportModal = true}
 							onimport={async () => {
@@ -757,7 +814,6 @@
 							}}
 							ongenerate={() => showGenerateCode = true}
 						onchat={() => {
-							console.log("[DEBUG] Chat clicked, showChat:", showChat, "ChatPanel:", !!ChatPanel);
 							showChat = !showChat;
 						}}
 							oncollab={() => showCollab = !showCollab}
@@ -961,6 +1017,16 @@
 <!-- Onboarding overlay -->
 {#if showOnboarding}
 	<OnboardingOverlayComponent onclose={() => { showOnboarding = false; localStorage.setItem('onboarding-done', '1'); }} />
+{/if}
+
+<!-- Upgrade modal -->
+{#if ui.showUpgradeModal}
+	<UpgradeModal />
+{/if}
+
+<!-- Admin panel -->
+{#if auth.isAdmin && ui.showAdminPanel}
+	<AdminPanel />
 {/if}
 
 <!-- Global dialog -->

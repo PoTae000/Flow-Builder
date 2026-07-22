@@ -45,9 +45,21 @@ export interface DiagramData {
 	customFonts?: CustomFont[];
 }
 
+export interface VersionMeta {
+	id: number;
+	createdAt: number;
+	name: string;
+	diagramType: string;
+}
+
+export type PlanType = 'basic' | 'advanced';
+
 export interface UserProfile {
 	sub: string;
 	name: string;
 	email: string;
 	picture: string;
+	plan: PlanType;
+	planExpiresAt?: string | null;
+	isAdmin?: boolean;
 }

@@ -2,6 +2,7 @@
 	import { convertAiDataToDiagram } from '$lib/utils/import-adapter';
 	import type { ImportedDiagramData } from '$lib/utils/import-adapter';
 	import type { AiParsedData } from '$lib/utils/import-adapter';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 
 	let {
 		aiAvailable,
@@ -73,7 +74,7 @@
 			const formData = new FormData();
 			formData.append('image', imageFile);
 
-			const res = await fetch('/api/import', {
+			const res = await aiFetch('/api/import', {
 				method: 'POST',
 				body: formData
 			});

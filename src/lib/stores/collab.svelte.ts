@@ -162,6 +162,11 @@ export class CollabState {
 	/** Lerp targets for smooth remote physics rendering */
 	private _physicsLerpTargets = new Map<string, { x: number; y: number }>();
 	private _physicsLerpFrameId = 0;
+	/** Lerp targets for smooth remote drag rendering */
+	private _dragLerpTargets = new Map<string, { x: number; y: number }>();
+	private _dragLerpFrameId = 0;
+	/** Per-client timestamp to detect stale drag awareness updates */
+	private _lastDragTs = new Map<number, number>();
 	/** Timer to detect empty/closed rooms for joiners */
 	private _emptyRoomTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -173,6 +178,7 @@ export class CollabState {
 		awarenessChangeNotation?: Function;
 		awarenessChangePhysics?: Function;
 		awarenessChangeDataFlow?: Function;
+		awarenessChangeDrag?: Function;
 		entitiesObserver?: Function;
 		relationshipsObserver?: Function;
 		metaObserver?: Function;
@@ -522,6 +528,86 @@ export class CollabState {
 		};
 		this._listeners.awarenessChangePhysics = updatePhysics;
 		awareness.on('change', updatePhysics);
+
+		// Listen for remote drag positions via awareness (lerp interpolation)
+		const dragLerp = () => {
+			if (this._dragLerpTargets.size === 0) {
+				this._dragLerpFrameId = 0;
+				return;
+			}
+			const LERP_FACTOR = 0.35;
+			let anyMoving = false;
+			for (const [id, target] of this._dragLerpTargets) {
+				// Skip entities the local user is actively dragging
+				if (diagram.localDraggingIds.has(id)) continue;
+
+				let node: { position: { x: number; y: number } } | undefined;
+				if (diagram.diagramType === 'er') {
+					node = diagram.entities.find(e => e.id === id);
+				} else if (diagram.diagramType === 'flowchart') {
+					node = diagram.flowNodes.find(n => n.id === id);
+				} else if (diagram.diagramType === 'context') {
+					node = diagram.dfdNodes.find(n => n.id === id);
+				}
+				if (!node) continue;
+				const dx = target.x - node.position.x;
+				const dy = target.y - node.position.y;
+				if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+					node.position = { x: target.x, y: target.y };
+				} else {
+					node.position = {
+						x: node.position.x + dx * LERP_FACTOR,
+						y: node.position.y + dy * LERP_FACTOR
+					};
+					anyMoving = true;
+				}
+			}
+			if (anyMoving) {
+				this._dragLerpFrameId = requestAnimationFrame(dragLerp);
+			} else {
+				this._dragLerpFrameId = 0;
+			}
+		};
+
+		const updateDrag = () => {
+			const states = awareness.getStates() as Map<number, any>;
+			states.forEach((state, clientId) => {
+				if (clientId === awareness.clientID) return;
+				if (state.dragIntent) {
+					const ts = state.dragIntent.ts as number;
+					const lastTs = this._lastDragTs.get(clientId) ?? 0;
+					if (ts <= lastTs) return;
+					this._lastDragTs.set(clientId, ts);
+
+					if (state.dragIntent.active && state.dragIntent.positions) {
+						const positions = state.dragIntent.positions as Record<string, { x: number; y: number }>;
+						for (const [rawId, pos] of Object.entries(positions)) {
+							// Parse prefixed keys: 'flow:xxx' → flowNode, 'dfd:xxx' → dfdNode, else ER entity
+							let nodeId = rawId;
+							if (rawId.startsWith('flow:')) {
+								nodeId = rawId.slice(5);
+							} else if (rawId.startsWith('dfd:')) {
+								nodeId = rawId.slice(4);
+							}
+							this._dragLerpTargets.set(nodeId, { x: pos.x, y: pos.y });
+						}
+						// Start lerp loop if not running
+						if (!this._dragLerpFrameId) {
+							this._dragLerpFrameId = requestAnimationFrame(dragLerp);
+						}
+					} else if (!state.dragIntent.active) {
+						// Drag stopped — clear lerp targets
+						this._dragLerpTargets.clear();
+						if (this._dragLerpFrameId) {
+							cancelAnimationFrame(this._dragLerpFrameId);
+							this._dragLerpFrameId = 0;
+						}
+					}
+				}
+			});
+		};
+		this._listeners.awarenessChangeDrag = updateDrag;
+		awareness.on('change', updateDrag);
 
 		// Listen for remote data flow toggle via awareness
 		const updateDataFlow = () => {
@@ -986,6 +1072,13 @@ export class CollabState {
 		this.cursorMap = new Map();
 		this.remoteSelections = new Map();
 		this.localClientId = -1;
+		// Clear drag lerp state
+		this._dragLerpTargets.clear();
+		this._lastDragTs.clear();
+		if (this._dragLerpFrameId) {
+			cancelAnimationFrame(this._dragLerpFrameId);
+			this._dragLerpFrameId = 0;
+		}
 		this.lastSaveUserName = null;
 		this.lastSaveUserPicture = null;
 		this.lastSaveTimestamp = null;
@@ -1012,6 +1105,9 @@ export class CollabState {
 			}
 			if (this._listeners.awarenessChangePhysics) {
 				awareness.off('change', this._listeners.awarenessChangePhysics);
+			}
+			if (this._listeners.awarenessChangeDrag) {
+				awareness.off('change', this._listeners.awarenessChangeDrag);
 			}
 			if (this._listeners.awarenessChangeDataFlow) {
 				awareness.off('change', this._listeners.awarenessChangeDataFlow);
@@ -1270,6 +1366,21 @@ export class CollabState {
 		this._provider.awareness.setLocalStateField('physicsIntent', { active: false, ts: Date.now() });
 		setTimeout(() => {
 			this._provider?.awareness.setLocalStateField('physicsIntent', null);
+		}, 500);
+	}
+
+	/** Broadcast drag positions via awareness (lightweight, no CRDT overhead) */
+	broadcastDragPositions(positions: Record<string, { x: number; y: number }>) {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('dragIntent', { positions, active: true, ts: Date.now() });
+	}
+
+	/** Broadcast that drag stopped — signals remote clients to clear lerp targets */
+	broadcastDragStop() {
+		if (!this.connected || !this._provider) return;
+		this._provider.awareness.setLocalStateField('dragIntent', { active: false, ts: Date.now() });
+		setTimeout(() => {
+			this._provider?.awareness.setLocalStateField('dragIntent', null);
 		}, 500);
 	}
 

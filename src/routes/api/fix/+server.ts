@@ -165,10 +165,9 @@ function buildIssuesDescription(issues: IssueData[]): string {
 
 const ALLOWED_SEVERITIES = new Set(['error', 'warning', 'info']);
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			const type: DiagramType = body.diagramType || 'er';
 			if (type === 'er') {

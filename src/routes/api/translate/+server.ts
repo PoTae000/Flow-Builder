@@ -62,10 +62,9 @@ You MUST return ONLY valid JSON (no markdown, no explanation) in this exact form
 
 Include ALL names from the input, even if unchanged.`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			const type: DiagramType = body.diagramType || 'er';
 			if (typeof body.targetLang !== 'string' || !['th', 'en'].includes(body.targetLang)) return false;

@@ -23,7 +23,8 @@ function handleCredentialResponse(response: google.accounts.id.CredentialRespons
 		sub: payload.sub as string,
 		name: payload.name as string,
 		email: payload.email as string,
-		picture: payload.picture as string
+		picture: payload.picture as string,
+		plan: 'basic'
 	};
 
 	// Store ID token for cloud sync
@@ -34,6 +35,26 @@ function handleCredentialResponse(response: google.accounts.id.CredentialRespons
 
 	auth.signIn(profile);
 	session.initSession();
+
+	// Fetch actual plan from server (non-blocking)
+	fetchUserPlan(response.credential);
+}
+
+/** Fetch user plan from server and update auth store */
+async function fetchUserPlan(token: string) {
+	try {
+		const res = await fetch('/api/user/plan', {
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		if (res.ok) {
+			const data = await res.json();
+			if (data.plan) {
+				auth.updatePlan(data.plan, data.isAdmin ?? false, data.planExpiresAt ?? null);
+			}
+		}
+	} catch {
+		// Non-critical — plan stays as 'basic' until next refresh
+	}
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { Entity, Relationship } from '$lib/types/er';
 import type { Position } from '$lib/types/geometry';
+import { aiFetch } from '$lib/utils/ai-fetch';
 
 /**
  * Compute layout positions using AI (Groq LLM).
@@ -46,7 +47,7 @@ export async function computeAILayout(
 			notation
 		};
 
-		const res = await fetch('/api/layout', {
+		const res = await aiFetch('/api/layout', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body),

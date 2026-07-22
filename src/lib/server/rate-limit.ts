@@ -1,64 +1,85 @@
 /**
- * KV-based rate limiting with minute-bucket key pattern.
+ * PostgreSQL-based rate limiting with atomic UPSERT.
  * Anonymous (by IP): 5 req/min | Authenticated (by sub): 20 req/min
- * Fail-closed: if KV is unavailable or errors, requests are denied (unless dev mode).
- *
- * KNOWN LIMITATION (H1 — TOCTOU race):
- * The KV get-then-put pattern is not atomic. Under high concurrency, multiple
- * requests may read the same counter value before any of them writes the
- * incremented value, allowing a brief burst above the limit. This is accepted
- * because:
- * 1. It's a soft/best-effort limit — the Groq API has its own rate limiting
- *    as a backstop, so overshoot doesn't cause unbounded cost.
- * 2. Cloudflare Durable Objects would provide atomic counters but add significant
- *    complexity and cost for marginal improvement.
- * 3. The window is small (fraction of a second) and exploiting it requires
- *    precise concurrent timing with minimal practical benefit.
+ * Uses INSERT ON CONFLICT to avoid TOCTOU race conditions.
+ * Falls back to in-memory Map when DB is unavailable.
  */
+
+import { pool } from '$lib/server/db';
 
 export interface RateLimitResult {
 	allowed: boolean;
 	remaining: number;
 }
 
-let _devMode = false;
+// In-memory fallback when DB is unavailable
+const memoryLimits = new Map<string, { count: number; expiresAt: number }>();
 
-/** Enable dev mode to allow requests when KV is unavailable. */
-export function enableDevMode() {
-	_devMode = true;
+function checkMemoryRateLimit(identifier: string, limit: number): RateLimitResult {
+	const now = Date.now();
+	const entry = memoryLimits.get(identifier);
+
+	if (!entry || entry.expiresAt <= now) {
+		memoryLimits.set(identifier, { count: 1, expiresAt: now + 60_000 });
+		return { allowed: true, remaining: limit - 1 };
+	}
+
+	entry.count++;
+	if (entry.count > limit) {
+		return { allowed: false, remaining: 0 };
+	}
+	return { allowed: true, remaining: limit - entry.count };
 }
 
 export async function checkRateLimit(
-	kv: KVNamespace | undefined,
 	identifier: string,
 	limit: number
 ): Promise<RateLimitResult> {
-	// No KV → fail closed unless explicitly in dev mode
-	if (!kv) {
-		if (_devMode) {
-			return { allowed: true, remaining: limit };
-		}
-		return { allowed: false, remaining: 0 };
-	}
-
-	const minute = Math.floor(Date.now() / 60000);
-	const key = `rate:${identifier}:${minute}`;
+	const expiresAt = new Date(Date.now() + 60_000); // 1 minute from now
 
 	try {
-		const raw = await kv.get(key);
-		const count = raw ? parseInt(raw, 10) : 0;
+		// Atomic upsert: insert or increment, reset if expired
+		const result = await pool.query<{ count: number }>(
+			`INSERT INTO rate_limits (key, count, expires_at)
+			 VALUES ($1, 1, $2)
+			 ON CONFLICT (key) DO UPDATE SET
+			   count = CASE
+			     WHEN rate_limits.expires_at <= NOW() THEN 1
+			     ELSE rate_limits.count + 1
+			   END,
+			   expires_at = CASE
+			     WHEN rate_limits.expires_at <= NOW() THEN $2
+			     ELSE rate_limits.expires_at
+			   END
+			 RETURNING count`,
+			[identifier, expiresAt]
+		);
 
-		if (count >= limit) {
+		const count = result.rows[0].count;
+
+		if (count > limit) {
 			return { allowed: false, remaining: 0 };
 		}
 
-		// Increment counter with 120s TTL (covers current + next minute)
-		await kv.put(key, String(count + 1), { expirationTtl: 120 });
+		return { allowed: true, remaining: limit - count };
+	} catch {
+		// DB unavailable — use in-memory fallback (still enforces limits)
+		return checkMemoryRateLimit(identifier, limit);
+	}
+}
 
-		return { allowed: true, remaining: limit - count - 1 };
-	} catch (err) {
-		// KV error → fail closed (deny request)
-		console.error('Rate limit KV error:', err);
-		return { allowed: false, remaining: 0 };
+/** Clean up expired rate limit entries (call periodically or on startup) */
+export async function cleanupExpiredRateLimits(): Promise<void> {
+	// Clean in-memory fallback
+	const now = Date.now();
+	for (const [key, entry] of memoryLimits) {
+		if (entry.expiresAt <= now) memoryLimits.delete(key);
+	}
+
+	// Clean DB
+	try {
+		await pool.query('DELETE FROM rate_limits WHERE expires_at <= NOW()');
+	} catch {
+		// DB may be unavailable
 	}
 }

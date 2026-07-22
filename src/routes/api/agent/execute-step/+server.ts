@@ -120,10 +120,9 @@ function buildContext(body: any): string {
 	return ctx;
 }
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => {
 			if (!body.instruction || typeof body.instruction !== 'string') return false;
 			if (!body.diagramType) return false;

@@ -40,6 +40,7 @@
 	const colors = $derived(theme.colors);
 	const stroke = $derived(selected ? colors.selectedStroke : highlighted ? '#3b82f6' : colors.relationshipStroke);
 	const strokeWidth = $derived(selected ? 2 : highlighted ? 2.5 : 1.2);
+	const dashArray = $derived(renderer.getStrokeDashArray(relationship));
 
 	const path = $derived(createOrthogonalPath(fromPoint, toPoint));
 	const mid = $derived(getOrthogonalMidpoint(fromPoint, toPoint));
@@ -110,6 +111,7 @@
 		fill="none"
 		stroke={stroke}
 		stroke-width={strokeWidth}
+		stroke-dasharray={dashArray}
 		marker-end={renderer.useArrowMarkers ? `url(#arrow-${selected ? 'selected' : 'default'})` : undefined}
 		class:line-draw={animateIn && pathLength > 0}
 		class:line-undraw={dying && pathLength > 0}

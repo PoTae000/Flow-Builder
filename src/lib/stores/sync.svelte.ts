@@ -1,5 +1,6 @@
-import type { DiagramMeta, DiagramData } from '$lib/types/session';
+import type { DiagramMeta, DiagramData, VersionMeta } from '$lib/types/session';
 import { auth } from '$lib/stores/auth.svelte';
+import { enqueue, dequeueAll, clearQueue, getQueueSize } from '$lib/stores/offline-queue';
 
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -364,9 +365,16 @@ class SyncState {
 
 	/**
 	 * Schedule a debounced push to cloud after local save.
+	 * When offline, queues to IndexedDB instead.
 	 */
 	schedulePush(meta: DiagramMeta, data: DiagramData) {
 		if (!this.canSync || this.errorCount >= SyncState.MAX_ERRORS) return;
+
+		// Offline: queue to IndexedDB
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			enqueue({ operation: 'push', diagramId: meta.id, data, meta, timestamp: Date.now() });
+			return;
+		}
 
 		// Replace any existing pending push for this diagram
 		const idx = this.pendingPush.findIndex((p) => p.meta.id === meta.id);
@@ -422,9 +430,15 @@ class SyncState {
 
 	/**
 	 * Delete a diagram from cloud.
+	 * When offline, queues to IndexedDB.
 	 */
 	async pushDelete(id: string) {
 		if (!this.canSync) return;
+
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			await enqueue({ operation: 'delete', diagramId: id, timestamp: Date.now() });
+			return;
+		}
 
 		try {
 			const res = await this.fetchApi(`/api/sync/diagram/${id}`, { method: 'DELETE' });
@@ -440,9 +454,15 @@ class SyncState {
 
 	/**
 	 * Push updated active diagram ID to cloud.
+	 * When offline, queues to IndexedDB.
 	 */
 	async pushActive(id: string) {
 		if (!this.canSync) return;
+
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			await enqueue({ operation: 'active', diagramId: id, timestamp: Date.now() });
+			return;
+		}
 
 		try {
 			const res = await this.fetchApi('/api/sync/push', {
@@ -515,6 +535,79 @@ class SyncState {
 			clearInterval(this.pollTimer);
 			this.pollTimer = null;
 		}
+	}
+
+	// --- Cloud Version History ---
+
+	async fetchVersions(diagramId: string): Promise<VersionMeta[]> {
+		if (!this.canSync) return [];
+		try {
+			const res = await this.fetchApi(`/api/sync/diagram/${diagramId}/versions`);
+			const data = (await res.json()) as { versions: VersionMeta[] };
+			return data.versions;
+		} catch (err) {
+			console.warn('[sync] fetchVersions failed:', err);
+			return [];
+		}
+	}
+
+	async fetchVersionData(diagramId: string, versionId: number): Promise<DiagramData | null> {
+		if (!this.canSync) return null;
+		try {
+			const res = await this.fetchApi(`/api/sync/diagram/${diagramId}/versions/${versionId}`);
+			const data = (await res.json()) as { data: DiagramData };
+			return data.data;
+		} catch (err) {
+			console.warn('[sync] fetchVersionData failed:', err);
+			return null;
+		}
+	}
+
+	async restoreVersion(diagramId: string, versionId: number): Promise<{ data: DiagramData; name: string; diagramType: string } | null> {
+		if (!this.canSync) return null;
+		try {
+			const res = await this.fetchApi(`/api/sync/diagram/${diagramId}/versions/${versionId}`, {
+				method: 'POST'
+			});
+			const result = (await res.json()) as { data: DiagramData; name: string; diagramType: string; version?: number };
+			if (result.version) {
+				this.lastPushedVersion = result.version;
+				this.lastKnownVersion = result.version;
+			}
+			return { data: result.data, name: result.name, diagramType: result.diagramType };
+		} catch (err) {
+			console.warn('[sync] restoreVersion failed:', err);
+			return null;
+		}
+	}
+
+	// --- Offline Queue Drain ---
+
+	async drainQueue(): Promise<void> {
+		if (!this.canSync) return;
+		const entries = await dequeueAll();
+		if (entries.length === 0) return;
+
+		for (const entry of entries) {
+			try {
+				if (entry.operation === 'push' && entry.data && entry.meta) {
+					await this.fetchApi('/api/sync/push', {
+						method: 'POST',
+						body: JSON.stringify({ diagrams: [{ meta: entry.meta, data: entry.data }] })
+					});
+				} else if (entry.operation === 'delete') {
+					await this.fetchApi(`/api/sync/diagram/${entry.diagramId}`, { method: 'DELETE' });
+				} else if (entry.operation === 'active') {
+					await this.fetchApi('/api/sync/push', {
+						method: 'POST',
+						body: JSON.stringify({ diagrams: [], active: entry.diagramId })
+					});
+				}
+			} catch (err) {
+				console.warn('[sync] drainQueue entry failed:', err);
+			}
+		}
+		await clearQueue();
 	}
 
 	reset() {

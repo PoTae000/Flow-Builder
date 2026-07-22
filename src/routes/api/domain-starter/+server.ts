@@ -97,10 +97,9 @@ Rules:
 - Processes must have flows in AND out
 - Show all major external entities and data stores`;
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => typeof body.domain === 'string' && body.domain.length > 0 && body.domain.length <= 500,
 		buildMessages: (body) => {
 			const type: DiagramType = body.diagramType || 'er';

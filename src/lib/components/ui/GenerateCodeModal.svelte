@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { aiFetch } from '$lib/utils/ai-fetch';
 
 	let {
 		onclose
@@ -85,7 +86,7 @@
 				body.relationships = $state.snapshot(diagram.relationships);
 			}
 
-			const res = await fetch('/api/generate-code', {
+			const res = await aiFetch('/api/generate-code', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
@@ -113,7 +114,7 @@
 	}
 
 	function downloadCode() {
-		const lang = languages.find((l) => l.id === selectedLang);
+		const lang = languages().find((l) => l.id === selectedLang);
 		const ext = lang?.id.startsWith('sql') ? 'sql' : lang?.id === 'prisma' ? 'prisma' : lang?.id === 'django' ? 'py' : lang?.id === 'laravel' ? 'php' : lang?.id === 'typeorm' ? 'ts' : 'js';
 		const blob = new Blob([generatedCode], { type: 'text/plain;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
@@ -167,7 +168,7 @@
 					กำลังสร้างโค้ด...
 				{:else}
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-					สร้างโค้ด {languages.find((l) => l.id === selectedLang)?.label}
+					สร้างโค้ด {languages().find((l) => l.id === selectedLang)?.label}
 				{/if}
 			</button>
 		{/if}

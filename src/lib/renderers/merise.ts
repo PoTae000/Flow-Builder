@@ -1,4 +1,4 @@
-import type { Entity, CardinalityType } from '$lib/types/er';
+import type { Entity, Relationship, CardinalityType } from '$lib/types/er';
 import type { Rect } from '$lib/types/geometry';
 import type { NotationRenderer } from './types.ts';
 
@@ -41,6 +41,10 @@ export class MeriseRenderer implements NotationRenderer {
 			'1..N': '1,N'
 		};
 		return map[cardinality] ?? cardinality;
+	}
+
+	getStrokeDashArray(relationship: Relationship): string | undefined {
+		return relationship.isIdentifying ? undefined : '8 4';
 	}
 
 	getMarkerDefs(): string {

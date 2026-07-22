@@ -169,7 +169,8 @@
 							</div>
 						{/if}
 
-						<div class="flex items-center gap-1">
+						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+						<div class="flex items-center gap-1" onclick={(e) => e.stopPropagation()}>
 							<button
 								class="rounded p-1 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text-secondary)]"
 								onclick={() => diagram.updateEntity(entity.id, { isWeak: !entity.isWeak })}
@@ -205,7 +206,8 @@
 
 					<!-- Attribute list (drawer) -->
 					{#if entity.attributes.length > 0 && expandedEntities.has(entity.id)}
-						<div class="mt-2 flex flex-col gap-0.5" transition:slide={{ duration: 250 }}>
+						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+						<div class="mt-2 flex flex-col gap-0.5" transition:slide={{ duration: 250 }} onclick={(e) => e.stopPropagation()}>
 							{#each entity.attributes as attr, i (attr.id)}
 							<div animate:flip={{ duration: 200 }}>
 								{#if editingAttrId === attr.id && editingAttrEntityId === entity.id}
@@ -320,7 +322,8 @@
 
 					<!-- Add attribute form (show only when single-selected & expanded) -->
 					{#if isSelected && diagram.selectedEntityId === entity.id && expandedEntities.has(entity.id)}
-						<div class="mt-2 animate-slide-up">
+						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+						<div class="mt-2 animate-slide-up" onclick={(e) => e.stopPropagation()}>
 							<AttributeForm entityId={entity.id} />
 						</div>
 					{/if}

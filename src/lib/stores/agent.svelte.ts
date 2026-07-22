@@ -3,6 +3,7 @@ import { collab } from '$lib/stores/collab.svelte';
 import type { AgentAction, AgentStep, AutoCompleteSuggestion } from '$lib/types/agent';
 import type { CardinalityType } from '$lib/types/er';
 import { generateId } from '$lib/utils/id';
+import { aiFetch } from '$lib/utils/ai-fetch';
 
 export class AgentState {
 	// Agent execution state
@@ -197,7 +198,7 @@ export class AgentState {
 			this.beginBatch('Agent: ' + goal);
 
 			// Step 1: Get plan
-			const planRes = await fetch('/api/agent/plan', {
+			const planRes = await aiFetch('/api/agent/plan', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -232,7 +233,7 @@ export class AgentState {
 						this.steps[i].status = 'done';
 						this.steps[i].actions = [{ op: 'auto-layout' }];
 					} else {
-						const stepRes = await fetch('/api/agent/execute-step', {
+						const stepRes = await aiFetch('/api/agent/execute-step', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify({
@@ -321,7 +322,7 @@ export class AgentState {
 
 		this.autoCompleteLoading = true;
 		try {
-			const res = await fetch('/api/agent/auto-complete', {
+			const res = await aiFetch('/api/agent/auto-complete', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({

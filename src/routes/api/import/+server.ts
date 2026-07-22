@@ -1,10 +1,13 @@
 import { json, error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
 import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
+import { GROQ_API_KEY } from '$env/static/private';
 import { authenticateRequest } from '$lib/server/google-verify';
 import { checkRateLimit } from '$lib/server/rate-limit';
 import { aiRequest, getClientIp } from '$lib/server/ai-request';
+import Groq from 'groq-sdk';
 import type { RequestHandler } from './$types';
+
+const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 const AI_SCHEMA_PROMPT = `You are an ER diagram expert. Analyze the input and extract entities and relationships for an Entity-Relationship diagram.
 
@@ -42,12 +45,50 @@ Rules:
 - Detect cardinality correctly based on the context
 - Design a proper normalized ER schema`;
 
+const AI_IMAGE_PROMPT = `You are an ER diagram reader. Your job is to EXACTLY reproduce what is shown in the image — nothing more, nothing less.
+
+Return ONLY valid JSON in this exact format (no markdown, no explanation):
+{
+  "entities": [
+    {
+      "name": "EntityName",
+      "attributes": [
+        { "name": "id", "type": "primary_key" },
+        { "name": "name", "type": "regular" }
+      ],
+      "isWeak": false,
+      "position": { "x": 250, "y": 100 }
+    }
+  ],
+  "relationships": [
+    {
+      "name": "relationship_name",
+      "from": "EntityA",
+      "to": "EntityB",
+      "cardinalityFrom": "1",
+      "cardinalityTo": "N",
+      "isIdentifying": false
+    }
+  ]
+}
+
+Attribute type must be one of: "primary_key", "foreign_key", "regular", "partial_key", "derived", "multivalued", "composite"
+Cardinality must be one of: "1", "N", "M", "0..1", "0..N", "1..1", "1..N"
+
+STRICT RULES:
+- Extract ONLY entities that are VISIBLE as entity boxes/rectangles in the image
+- Do NOT invent, infer, or add any entities that are not drawn in the diagram
+- Do NOT normalize or restructure the schema — reproduce it exactly as shown
+- Read attribute names exactly as written in the image (keep the original names)
+- If an attribute is listed inside an entity box, keep it as an attribute — do NOT turn it into a separate entity
+- The first attribute (usually ID) should be "primary_key" type
+- Read relationship names from the labels on the connecting lines
+- Read cardinality from the notation symbols on the lines (crow's foot, chen notation, etc.)
+- Estimate each entity's center position: x from 0 (left) to 1000 (right), y from 0 (top) to 1000 (bottom)
+- The number of entities in your output MUST match the number of entity boxes visible in the image`;
+
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const MAX_TEXT_LENGTH = 50_000;
-
-function getApiKey(platform: App.Platform | undefined): string | undefined {
-	return platform?.env?.GROQ_API_KEY || env.GROQ_API_KEY;
-}
 
 function extractJson(text: string): string {
 	const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -59,16 +100,11 @@ function extractJson(text: string): string {
 	return text;
 }
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	const contentType = request.headers.get('content-type') || '';
 
-	// Image upload via multipart/form-data — special handling (can't use aiRequest for formData)
+	// Image upload via multipart/form-data — special handling
 	if (contentType.includes('multipart/form-data')) {
-		const apiKey = getApiKey(platform);
-		if (!apiKey) {
-			throw error(503, 'ฟีเจอร์ AI ยังไม่พร้อมใช้งาน ต้องตั้งค่า GROQ_API_KEY ก่อน');
-		}
-
 		// Optional auth + rate limit
 		let userSub: string | null = null;
 		try {
@@ -76,10 +112,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			userSub = payload.sub;
 		} catch { /* anonymous */ }
 
-		const kv = platform?.env?.DIAGRAMS_KV;
 		const identifier = userSub || `ip:${getClientIp(request)}`;
 		const limit = userSub ? 20 : 5;
-		const { allowed } = await checkRateLimit(kv, identifier, limit);
+		const { allowed } = await checkRateLimit(identifier, limit);
 		if (!allowed) {
 			return json({ error: 'Rate limit exceeded' }, { status: 429 });
 		}
@@ -102,50 +137,32 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		}
 
 		const arrayBuffer = await file.arrayBuffer();
-		const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+		const base64 = Buffer.from(arrayBuffer).toString('base64');
 		const dataUrl = `data:${mimeType};base64,${base64}`;
 
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 30_000);
-
 		try {
-			const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${apiKey}`
-				},
-				body: JSON.stringify({
-					model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-					messages: [
-						{
-							role: 'user',
-							content: [
-								{
-									type: 'text',
-									text: AI_SCHEMA_PROMPT + '\n\nAnalyze this ER diagram image and extract all entities, attributes, and relationships. Return ONLY valid JSON.'
-								},
-								{
-									type: 'image_url',
-									image_url: { url: dataUrl }
-								}
-							]
-						}
-					],
-					temperature: 0.2,
-					max_tokens: 4096
-				}),
-				signal: controller.signal
+			const completion = await groq.chat.completions.create({
+				model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+				messages: [
+					{
+						role: 'user',
+						content: [
+							{
+								type: 'text',
+								text: AI_IMAGE_PROMPT + '\n\nRead this ER diagram image. Extract EXACTLY what is shown — do not add or remove any entities. Return ONLY valid JSON.'
+							},
+							{
+								type: 'image_url',
+								image_url: { url: dataUrl }
+							}
+						]
+					}
+				],
+				temperature: 0.2,
+				max_tokens: 4096
 			});
 
-			if (!response.ok) {
-				const errBody = await response.text();
-				console.error('Groq Vision API error:', response.status, errBody);
-				throw error(502, 'AI ทำงานผิดพลาด กรุณาลองใหม่');
-			}
-
-			const result: any = await response.json();
-			const resultText = result.choices?.[0]?.message?.content;
+			const resultText = completion.choices[0]?.message?.content;
 
 			if (!resultText) {
 				throw error(502, 'AI ไม่ตอบกลับ');
@@ -156,20 +173,14 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			return json(parsed);
 		} catch (err: unknown) {
 			if (err && typeof err === 'object' && 'status' in err) throw err;
-			if (err instanceof DOMException && err.name === 'AbortError') {
-				throw error(504, 'AI ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
-			}
 			console.error('Import Vision error:', err);
 			throw error(500, 'ไม่สามารถวิเคราะห์รูปภาพได้');
-		} finally {
-			clearTimeout(timeout);
 		}
 	}
 
 	// Text import via JSON body — use shared aiRequest pipeline
 	return aiRequest({
 		request,
-		platform,
 		validateBody: (body) => typeof body.text === 'string' && body.text.length > 0 && body.text.length <= MAX_TEXT_LENGTH,
 		buildMessages: (body) => {
 			const text = String(body.text).slice(0, MAX_TEXT_LENGTH);

@@ -4,34 +4,31 @@ import {
 	withRateLimitHeaders,
 	isValidDiagramId
 } from '$lib/server/sync-validate';
+import { pool } from '$lib/server/db';
 import type { RequestHandler } from './$types';
 
-export const DELETE: RequestHandler = async ({ request, platform, params }) => {
-	const kv = platform?.env?.DIAGRAMS_KV;
-	if (!kv) throw error(503, 'Cloud sync is not available');
-
-	const { sub, remaining } = await authenticateAndRateLimit(request, platform);
+export const DELETE: RequestHandler = async ({ request, params }) => {
+	const { sub, remaining } = await authenticateAndRateLimit(request);
 
 	const diagramId = params.id;
 	if (!isValidDiagramId(diagramId)) {
 		throw error(400, 'Invalid diagram ID format');
 	}
 
-	// Delete diagram data
-	await kv.delete(`user:${sub}:diagram:${diagramId}`);
+	// Delete diagram
+	await pool.query(
+		'DELETE FROM diagrams WHERE user_sub = $1 AND id = $2',
+		[sub, diagramId]
+	);
 
-	// Remove from meta list
-	const metaRaw = await kv.get(`user:${sub}:diagrams`);
-	if (metaRaw) {
-		let metas: Array<{ id: string }>;
-		try { metas = JSON.parse(metaRaw); } catch { metas = []; }
-		const filtered = metas.filter((m) => m.id !== diagramId);
-		await kv.put(`user:${sub}:diagrams`, JSON.stringify(filtered));
-	}
-
-	// Bump version counter using Date.now() to avoid read-increment-write race
+	// Bump version
 	const newVersion = Date.now();
-	await kv.put(`user:${sub}:version`, String(newVersion));
+	await pool.query(
+		`INSERT INTO user_state (user_sub, version)
+		 VALUES ($1, $2)
+		 ON CONFLICT (user_sub) DO UPDATE SET version = $2`,
+		[sub, newVersion]
+	);
 
 	return withRateLimitHeaders(json({ ok: true, version: newVersion }), remaining);
 };

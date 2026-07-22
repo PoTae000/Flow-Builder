@@ -9,6 +9,7 @@ node_modules
 /build
 .claude
 
+
 # OS
 .DS_Store
 Thumbs.db

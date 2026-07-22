@@ -1,30 +1,36 @@
 /**
  * Shared pipeline for all AI endpoints.
- * Handles: optional auth, rate limiting, body parsing, Groq fetch with timeout, response validation.
+ * Handles: optional auth, rate limiting, body parsing, Groq API, response validation.
  */
 
 import { json, error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
 import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
+import { GROQ_API_KEY } from '$env/static/private';
 import { authenticateRequest } from '$lib/server/google-verify';
 import { checkRateLimit } from '$lib/server/rate-limit';
+import { getUserPlan } from '$lib/server/db';
+import { isAdminEmail } from '$lib/server/admin';
+import Groq from 'groq-sdk';
 
 const ANON_RATE_LIMIT = 15; // req/min
 const AUTH_RATE_LIMIT = 40; // req/min
-const DEFAULT_TIMEOUT = 30_000; // 30s
 const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 
-function getApiKey(platform: App.Platform | undefined): string | undefined {
-	return platform?.env?.GROQ_API_KEY || env.GROQ_API_KEY;
-}
+const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 export function getClientIp(request: Request): string {
-	return request.headers.get('cf-connecting-ip') || 'unknown';
+	return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+		|| request.headers.get('x-real-ip')
+		|| 'unknown';
+}
+
+/** Strip Qwen3 <think>...</think> reasoning blocks from output */
+function stripThinkingTags(text: string): string {
+	return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
 export interface AiRequestOptions {
 	request: Request;
-	platform: App.Platform | undefined;
 	buildMessages: (body: any) => Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
 	validateBody?: (body: any) => boolean;
 	/** Transform raw AI text before returning. Receives raw text, returns object to be JSON-serialized. */
@@ -38,7 +44,6 @@ export interface AiRequestOptions {
 export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 	const {
 		request,
-		platform,
 		buildMessages,
 		validateBody,
 		transformResponse,
@@ -48,32 +53,40 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 		jsonMode = true
 	} = opts;
 
-	// 1. Check API key
-	const apiKey = getApiKey(platform);
-	if (!apiKey) {
-		throw error(503, 'ฟีเจอร์ AI ยังไม่พร้อมใช้งาน ต้องตั้งค่า GROQ_API_KEY ก่อน');
-	}
-
-	// 1.5 Body size check — read actual bytes (Content-Length header is spoofable)
+	// 1. Body size check — read actual bytes (Content-Length header is spoofable)
 	const rawText = await request.text();
 	if (new TextEncoder().encode(rawText).byteLength > MAX_BODY_SIZE) {
 		throw error(413, 'Request body too large');
 	}
 
-	// 2. Optional auth
+	// 2. Auth — REQUIRED for AI
 	let userSub: string | null = null;
+	let userEmail: string | null = null;
 	try {
 		const payload = await authenticateRequest(request, PUBLIC_GOOGLE_CLIENT_ID);
 		userSub = payload.sub;
+		userEmail = payload.email;
 	} catch {
-		// Anonymous — that's fine
+		// Anonymous — blocked
 	}
 
-	// 3. Rate limit
-	const kv = platform?.env?.DIAGRAMS_KV;
-	const identifier = userSub || `ip:${getClientIp(request)}`;
-	const limit = userSub ? AUTH_RATE_LIMIT : ANON_RATE_LIMIT;
-	const { allowed } = await checkRateLimit(kv, identifier, limit);
+	if (!userSub) {
+		return json({ error: 'login_required', message: 'กรุณาเข้าสู่ระบบเพื่อใช้งาน AI' }, { status: 401 });
+	}
+
+	// 3. Plan check — skip for admin
+	const isAdmin = isAdminEmail(userEmail);
+	if (!isAdmin) {
+		const { plan } = await getUserPlan(userSub);
+		if (plan !== 'advanced') {
+			return json({ error: 'upgrade_required', message: 'กรุณาอัปเกรดเป็น Advanced เพื่อใช้งาน AI', plan: 'basic' }, { status: 403 });
+		}
+	}
+
+	// 4. Rate limit
+	const identifier = userSub;
+	const limit = AUTH_RATE_LIMIT;
+	const { allowed } = await checkRateLimit(identifier, limit);
 
 	if (!allowed) {
 		return json({ error: 'Rate limit exceeded' }, { status: 429 });
@@ -93,44 +106,24 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 	// 5. Build messages
 	const messages = buildMessages(body);
 
-	// 6. Groq fetch with timeout
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
-
+	// 6. Groq API call
 	try {
-		const groqBody: Record<string, unknown> = {
+		const completion = await groq.chat.completions.create({
 			model,
-			messages,
+			messages: messages as Groq.Chat.Completions.ChatCompletionMessageParam[],
 			temperature,
 			max_tokens: maxTokens
-		};
-		if (jsonMode) {
-			groqBody.response_format = { type: 'json_object' };
-		}
-
-		const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Bearer ${apiKey}`
-			},
-			body: JSON.stringify(groqBody),
-			signal: controller.signal
 		});
 
-		if (!response.ok) {
-			const errBody = await response.text();
-			console.error('Groq API error:', response.status, errBody);
-			throw error(
-				response.status === 429 ? 429 : 502,
-				response.status === 429
-					? 'AI ยุ่งอยู่ ลองใหม่อีกครั้ง'
-					: 'AI ทำงานผิดพลาด กรุณาลองใหม่'
-			);
+		let text = completion.choices[0]?.message?.content;
+
+		if (!text) {
+			console.error('Groq empty response');
+			throw error(502, 'AI ไม่ตอบกลับ');
 		}
 
-		const result: any = await response.json();
-		const text = result.choices?.[0]?.message?.content;
+		// Strip <think>...</think> blocks (Qwen thinking mode)
+		text = stripThinkingTags(text);
 
 		if (!text) {
 			throw error(502, 'AI ไม่ตอบกลับ');
@@ -153,13 +146,12 @@ export async function aiRequest(opts: AiRequestOptions): Promise<Response> {
 		// 8. Return response (no rate limit headers exposed)
 		return json(parsed);
 	} catch (err: unknown) {
-		if (err && typeof err === 'object' && 'status' in err) throw err;
-		if (err instanceof DOMException && err.name === 'AbortError') {
-			throw error(504, 'AI ใช้เวลานานเกินไป ลองใหม่อีกครั้ง');
-		}
-		console.error('AI request error:', err);
-		throw error(500, 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง');
-	} finally {
-		clearTimeout(timeout);
+		// Re-throw SvelteKit HttpErrors (from error() calls above)
+		// SvelteKit errors have both 'status' and 'body', Groq SDK errors only have 'status'
+		if (err && typeof err === 'object' && 'status' in err && 'body' in err) throw err;
+		// Groq SDK errors or other failures → convert to proper SvelteKit error
+		const msg = err instanceof Error ? err.message : 'Unknown error';
+		console.error('AI request error:', msg);
+		throw error(502, 'AI เกิดข้อผิดพลาด ลองใหม่อีกครั้ง');
 	}
 }
