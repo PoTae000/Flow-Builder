@@ -15,7 +15,7 @@ export function registerCollab(c: typeof _collab) {
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 // Lazy import session to avoid circular dependency
-let _session: { activeDiagramId: string | null } | null = null;
+let _session: { activeDiagramId: string | null; activeDiagramName: string } | null = null;
 export function registerSession(s: typeof _session) {
 	_session = s;
 }
@@ -97,7 +97,7 @@ class AutoSaveState {
 	 * Called when diagram switches - reset state and start timer if needed
 	 */
 	onDiagramSwitch() {
-		const diagramId = _session?.activeDiagramId;
+		const diagramId = _session?.activeDiagramId ?? null;
 
 		// If diagram changed, reset state
 		if (diagramId !== this.lastDiagramId) {
@@ -245,7 +245,7 @@ class AutoSaveState {
 		return {
 			version: '1.0',
 			diagramType: diagram.diagramType,
-			name: diagram.diagramName || 'Untitled',
+			name: _session?.activeDiagramName || 'Untitled',
 			entities: diagram.entities,
 			relationships: diagram.relationships,
 			flowNodes: diagram.flowNodes,

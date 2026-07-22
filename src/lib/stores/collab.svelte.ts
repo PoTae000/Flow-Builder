@@ -8,6 +8,7 @@ import { PUBLIC_SIGNALING_URL } from '$env/static/public';
 import type { Entity, Attribute, Relationship, CardinalityType, Note } from '$lib/types/er';
 import type { NotationStyle } from '$lib/types/notation';
 import type { FlowNode, FlowEdge } from '$lib/types/flowchart';
+import type { AgentAction } from '$lib/types/agent';
 import type { DFDNode, DFDFlow } from '$lib/types/context-diagram';
 import { safeSave } from '$lib/utils/storage';
 import { snap } from './collab-utils';
@@ -45,9 +46,7 @@ export interface ChatMessage {
 	senderName?: string;
 	senderPicture?: string;
 	action?: {
-		type: 'create' | 'modify';
-		entities: any[];
-		relationships: any[];
+		actions: AgentAction[];
 		appliedBy?: string;
 	};
 }

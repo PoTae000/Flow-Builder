@@ -11,10 +11,11 @@ export const GET: RequestHandler = async () => {
 			time: result.rows[0].time
 		});
 	} catch (err) {
+		// Log details server-side only — pg error messages can leak host/port/db name
+		console.error('[health] DB check failed:', err);
 		return json({
 			status: 'error',
-			database: 'disconnected',
-			message: err instanceof Error ? err.message : 'Unknown error'
+			database: 'disconnected'
 		}, { status: 503 });
 	}
 };

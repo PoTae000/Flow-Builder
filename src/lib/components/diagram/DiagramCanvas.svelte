@@ -1167,34 +1167,35 @@
 	}
 
 	function handleResizeMove(e: MouseEvent) {
-		if (!resizing) return;
+		const r = resizing;
+		if (!r) return;
 
-		const node = diagram.flowNodes.find(n => n.id === resizing.nodeId);
+		const node = diagram.flowNodes.find(n => n.id === r.nodeId);
 		if (!node) return;
 
 		const svgPos = getSVGPoint(e);
-		const dx = svgPos.x - resizing.startX;
-		const dy = svgPos.y - resizing.startY;
+		const dx = svgPos.x - r.startX;
+		const dy = svgPos.y - r.startY;
 
-		let newWidth = resizing.startWidth;
-		let newHeight = resizing.startHeight;
-		let newX = resizing.startPosX;
-		let newY = resizing.startPosY;
+		let newWidth = r.startWidth;
+		let newHeight = r.startHeight;
+		let newX = r.startPosX;
+		let newY = r.startPosY;
 
 		// Apply resize based on handle
-		if (resizing.handle.includes('e')) {
-			newWidth = resizing.startWidth + dx;
+		if (r.handle.includes('e')) {
+			newWidth = r.startWidth + dx;
 		}
-		if (resizing.handle.includes('w')) {
-			newWidth = resizing.startWidth - dx;
-			newX = resizing.startPosX + dx / 2;
+		if (r.handle.includes('w')) {
+			newWidth = r.startWidth - dx;
+			newX = r.startPosX + dx / 2;
 		}
-		if (resizing.handle.includes('s')) {
-			newHeight = resizing.startHeight + dy;
+		if (r.handle.includes('s')) {
+			newHeight = r.startHeight + dy;
 		}
-		if (resizing.handle.includes('n')) {
-			newHeight = resizing.startHeight - dy;
-			newY = resizing.startPosY + dy / 2;
+		if (r.handle.includes('n')) {
+			newHeight = r.startHeight - dy;
+			newY = r.startPosY + dy / 2;
 		}
 
 		// Enforce minimum size
@@ -1207,11 +1208,11 @@
 			newHeight = Math.round(newHeight / 20) * 20;
 		}
 
-		diagram.updateFlowNode(resizing.nodeId, {
+		diagram.updateFlowNode(r.nodeId, {
 			width: newWidth,
 			height: newHeight
 		});
-		diagram.moveFlowNode(resizing.nodeId, { x: newX, y: newY });
+		diagram.moveFlowNode(r.nodeId, { x: newX, y: newY });
 	}
 
 	function handleResizeEnd() {
@@ -1687,19 +1688,20 @@
 	function handleMouseUp(e: MouseEvent) {
 		if (e.button === 0) {
 			// Handle connection drop
-			if (draggingConnection && hoveredNodeId) {
+			const dc = draggingConnection;
+			if (dc && hoveredNodeId) {
 				if (diagram.diagramType === 'flowchart') {
-					diagram.addFlowEdge('', draggingConnection.fromNodeId, hoveredNodeId);
+					diagram.addFlowEdge('', dc.fromNodeId, hoveredNodeId);
 				} else if (diagram.diagramType === 'context') {
 					const targetNode = diagram.dfdNodes.find(n => n.id === hoveredNodeId);
-					const fromNode = diagram.dfdNodes.find(n => n.id === draggingConnection.fromNodeId);
+					const fromNode = diagram.dfdNodes.find(n => n.id === dc.fromNodeId);
 					const mousePos = screenToSvg(e.clientX, e.clientY);
-					const fSide = draggingConnection.fromSide;
+					const fSide = dc.fromSide;
 					const isH = fSide === 'left' || fSide === 'right';
 
 					// Compute exit point (matches temp line GAP=20)
 					const GAP = 20;
-					const sx = draggingConnection.startX, sy = draggingConnection.startY;
+					const sx = dc.startX, sy = dc.startY;
 					const exitX = fSide === 'right' ? sx + GAP : fSide === 'left' ? sx - GAP : sx;
 					const exitY = fSide === 'bottom' ? sy + GAP : fSide === 'top' ? sy - GAP : sy;
 
@@ -1738,8 +1740,8 @@
 					// Auto-offset to prevent overlap with existing flows between same node pair
 					const SPACING = 20;
 					const pairFlows = diagram.dfdFlows.filter(f =>
-						(f.fromNodeId === draggingConnection!.fromNodeId && f.toNodeId === hoveredNodeId) ||
-						(f.fromNodeId === hoveredNodeId && f.toNodeId === draggingConnection!.fromNodeId)
+						(f.fromNodeId === dc.fromNodeId && f.toNodeId === hoveredNodeId) ||
+						(f.fromNodeId === hoveredNodeId && f.toNodeId === dc.fromNodeId)
 					);
 					const offset = pairFlows.length > 0
 						? (isH ? (fSide === 'right' ? 1 : -1) : (fSide === 'bottom' ? 1 : -1)) * SPACING * pairFlows.length
@@ -1753,7 +1755,7 @@
 						? { x: midX + offset, y: 0 }
 						: { x: 0, y: midY + offset };
 
-					diagram.addDFDFlow('', draggingConnection.fromNodeId, hoveredNodeId, fSide, toSide, fromPortOffset, toPortOffset, [wp]);
+					diagram.addDFDFlow('', dc.fromNodeId, hoveredNodeId, fSide, toSide, fromPortOffset, toPortOffset, [wp]);
 				}
 			}
 			// Handle resize end

@@ -67,8 +67,8 @@ class AuthState {
 
 	private saveToStorage() {
 		if (!this.user) return;
-		const { sub, name, picture, plan, isAdmin, planExpiresAt } = this.user;
-		safeSave(STORAGE_KEY, JSON.stringify({ sub, name, picture, plan, isAdmin, planExpiresAt }));
+		const { sub, name, email, picture, plan, isAdmin, planExpiresAt } = this.user;
+		safeSave(STORAGE_KEY, JSON.stringify({ sub, name, email, picture, plan, isAdmin, planExpiresAt }));
 	}
 
 	private clearExpiryTimer() {
@@ -88,10 +88,17 @@ class AuthState {
 			this.updatePlan('basic', undefined, null);
 			return;
 		}
-		// Schedule auto-downgrade (cap at 24h to avoid setTimeout overflow)
+		const MAX_DELAY = 24 * 60 * 60 * 1000;
+		if (ms > MAX_DELAY) {
+			// Longer than setTimeout can safely hold — sleep 24h then re-check,
+			// don't downgrade yet (plan isn't actually expired).
+			this.expiryTimer = setTimeout(() => this.scheduleExpiryCheck(), MAX_DELAY);
+			return;
+		}
+		// Within range — schedule the real downgrade at expiry.
 		this.expiryTimer = setTimeout(() => {
 			this.updatePlan('basic', undefined, null);
-		}, Math.min(ms, 24 * 60 * 60 * 1000));
+		}, ms);
 	}
 }
 

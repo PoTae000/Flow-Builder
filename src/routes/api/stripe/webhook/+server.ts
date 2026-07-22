@@ -32,7 +32,9 @@ export async function POST({ request }: { request: Request }) {
 			if (userSub && session.subscription) {
 				// Fetch subscription to get period end
 				const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
-				const periodEnd = new Date(subscription.current_period_end * 1000);
+				// API 2026-06-24: current_period_end moved from the subscription
+				// object to each subscription item.
+				const periodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
 				await updateUserPlan(userSub, 'advanced', periodEnd);
 
 				// Upsert subscription record
@@ -65,7 +67,7 @@ export async function POST({ request }: { request: Request }) {
 			);
 			if (result.rows.length > 0) {
 				const userSub = result.rows[0].sub;
-				const periodEnd = new Date(subscription.current_period_end * 1000);
+				const periodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
 
 				if (subscription.status === 'active' || subscription.status === 'trialing') {
 					await updateUserPlan(userSub, 'advanced', periodEnd);

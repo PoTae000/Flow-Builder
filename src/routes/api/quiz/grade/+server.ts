@@ -66,9 +66,24 @@ export const POST: RequestHandler = async ({ request }) => {
 		validateBody: (body) => {
 			if (!body.scenario || !body.idealSolution || !body.userSolution) return false;
 			if (typeof body.scenario !== 'string' || body.scenario.length > 2000) return false;
+			// Solutions must be plain objects — buildMessages reads nested arrays off them
+			if (typeof body.idealSolution !== 'object' || Array.isArray(body.idealSolution)) return false;
+			if (typeof body.userSolution !== 'object' || Array.isArray(body.userSolution)) return false;
 			if (Array.isArray(body.requirements)) {
 				if (body.requirements.length > 20) return false;
 				if (body.requirements.some((r: unknown) => typeof r !== 'string' || (r as string).length > 500)) return false;
+			}
+			// Each solution must carry the array fields for its diagram type
+			const type: DiagramType = body.diagramType || 'er';
+			const requiredKeys = type === 'context'
+				? ['dfdNodes', 'dfdFlows']
+				: type === 'flowchart'
+					? ['flowNodes', 'flowEdges']
+					: ['entities', 'relationships'];
+			for (const sol of [body.idealSolution, body.userSolution]) {
+				const ok = requiredKeys.some((k) => Array.isArray(sol[k]))
+					|| Array.isArray(sol.entities) || Array.isArray(sol.relationships);
+				if (!ok) return false;
 			}
 			const idealStr = JSON.stringify(body.idealSolution);
 			const userStr = JSON.stringify(body.userSolution);

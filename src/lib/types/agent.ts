@@ -29,7 +29,7 @@ export type AgentAction =
 	| { op: 'remove-flow-node'; name: string }
 	| { op: 'add-flow-edge'; label: string; fromNode: string; toNode: string; condition?: 'yes' | 'no' }
 	| { op: 'remove-flow-edge'; fromNode: string; toNode: string }
-	| { op: 'add-dfd-node'; name: string; type: DFDNodeType; processNumber?: string }
+	| { op: 'add-dfd-node'; name: string; type: DFDNodeType; processNumber?: string; storeNumber?: string }
 	| { op: 'remove-dfd-node'; name: string }
 	| { op: 'add-dfd-flow'; label: string; fromNode: string; toNode: string }
 	| { op: 'remove-dfd-flow'; fromNode: string; toNode: string }

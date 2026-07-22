@@ -1,5 +1,6 @@
 import type { Entity, Relationship } from '$lib/types/er';
-import type { FlowNode, FlowEdge, DFDNode, DFDFlow } from '$lib/types/flowchart';
+import type { FlowNode, FlowEdge } from '$lib/types/flowchart';
+import type { DFDNode, DFDFlow } from '$lib/types/context-diagram';
 
 export interface DiagramTemplate {
 	name: string;

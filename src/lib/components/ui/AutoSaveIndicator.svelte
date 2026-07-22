@@ -2,6 +2,7 @@
 	import { autoSave } from '$lib/stores/auto-save.svelte';
 	import { pickSaveLocation, isInIframe, downloadAsFile } from '$lib/utils/file-system';
 	import { diagram } from '$lib/stores/diagram.svelte';
+	import { session } from '$lib/stores/session.svelte';
 
 	const inIframe = isInIframe();
 
@@ -13,7 +14,7 @@
 	}
 
 	function handleDownload() {
-		const name = diagram.diagramName || 'diagram';
+		const name = session.activeDiagramName || 'diagram';
 		const data = {
 			version: '1.0',
 			diagramType: diagram.diagramType,

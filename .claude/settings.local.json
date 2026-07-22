@@ -101,7 +101,10 @@
       "Bash(PGPASSWORD=admin112233 psql:*)",
       "Bash(npm test:*)",
       "Bash(npm run dev:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Skill(update-config)",
+      "Bash(echo \"exit-grep:$?\")",
+      "Bash(echo \"grep-exit:$?\")"
     ]
   }
 }

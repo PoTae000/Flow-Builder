@@ -24,6 +24,7 @@ interface GoogleTokenPayload {
 	email: string;
 	name: string;
 	picture: string;
+	email_verified: boolean;
 	iss: string;
 	aud: string;
 	exp: number;
@@ -100,6 +101,11 @@ export async function verifyGoogleToken(
 
 	// Check audience
 	if (payload.aud !== clientId) throw new Error('Invalid audience');
+
+	// Check email is verified — email claim is untrusted without this.
+	// An attacker controlling a Google Workspace domain can set an unverified
+	// alias matching an admin's email; email_verified guards admin checks.
+	if (payload.email_verified !== true) throw new Error('Email not verified');
 
 	// Verify signature
 	const keys = await fetchJWKS();

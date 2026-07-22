@@ -36,7 +36,7 @@
 	const entityRelCount = $derived(
 		new Map(nodes().map(n => [
 			n.id,
-			connections().filter(c => {
+			connections().filter((c: any) => {
 				if (diagram.diagramType === 'flowchart') {
 					return c.fromNode === n.id || c.toNode === n.id;
 				} else if (diagram.diagramType === 'context') {
@@ -64,7 +64,7 @@
 
 	const relationshipMatrix = $derived.by(() => {
 		const map = new Map<string, any[]>();
-		for (const conn of connections()) {
+		for (const conn of connections() as any[]) {
 			let id1: string, id2: string;
 			if (diagram.diagramType === 'flowchart') {
 				id1 = conn.fromNode;

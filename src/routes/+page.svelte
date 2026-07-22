@@ -492,7 +492,7 @@
 
 		// In iframe or no File System Access API — fall back to blob download
 		if (!isFileSystemSupported()) {
-			const name = diagram.diagramName || 'diagram';
+			const name = session.activeDiagramName || 'diagram';
 			const data = {
 				version: '1.0',
 				diagramType: diagram.diagramType,
@@ -518,7 +518,7 @@
 		}
 
 		// No file handle yet — open save picker
-		const name = diagram.diagramName || 'diagram';
+		const name = session.activeDiagramName || 'diagram';
 		const handle = await pickSaveLocation(`${name}.erd`);
 		if (handle) {
 			autoSave.setFileHandle(handle);

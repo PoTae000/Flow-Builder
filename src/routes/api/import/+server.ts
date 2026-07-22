@@ -3,7 +3,9 @@ import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
 import { GROQ_API_KEY } from '$env/static/private';
 import { authenticateRequest } from '$lib/server/google-verify';
 import { checkRateLimit } from '$lib/server/rate-limit';
-import { aiRequest, getClientIp } from '$lib/server/ai-request';
+import { aiRequest } from '$lib/server/ai-request';
+import { getUserPlan } from '$lib/server/db';
+import { isAdminEmail } from '$lib/server/admin';
 import Groq from 'groq-sdk';
 import type { RequestHandler } from './$types';
 
@@ -105,16 +107,30 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	// Image upload via multipart/form-data — special handling
 	if (contentType.includes('multipart/form-data')) {
-		// Optional auth + rate limit
+		// Vision inference is the most expensive AI path — require login + plan,
+		// same gate as every other AI endpoint (via aiRequest). No anonymous access.
 		let userSub: string | null = null;
+		let userEmail: string | null = null;
 		try {
 			const payload = await authenticateRequest(request, PUBLIC_GOOGLE_CLIENT_ID);
 			userSub = payload.sub;
-		} catch { /* anonymous */ }
+			userEmail = payload.email;
+		} catch { /* anonymous — blocked below */ }
 
-		const identifier = userSub || `ip:${getClientIp(request)}`;
-		const limit = userSub ? 20 : 5;
-		const { allowed } = await checkRateLimit(identifier, limit);
+		if (!userSub) {
+			return json({ error: 'login_required', message: 'กรุณาเข้าสู่ระบบเพื่อใช้งาน AI' }, { status: 401 });
+		}
+
+		// Plan check — skip for admin
+		if (!isAdminEmail(userEmail)) {
+			const { plan } = await getUserPlan(userSub);
+			if (plan !== 'advanced') {
+				return json({ error: 'upgrade_required', message: 'กรุณาอัปเกรดเป็น Advanced เพื่อใช้งาน AI', plan: 'basic' }, { status: 403 });
+			}
+		}
+
+		// Rate limit by authenticated user (not spoofable IP)
+		const { allowed } = await checkRateLimit(userSub, 20);
 		if (!allowed) {
 			return json({ error: 'Rate limit exceeded' }, { status: 429 });
 		}

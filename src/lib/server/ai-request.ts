@@ -19,9 +19,22 @@ const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 export function getClientIp(request: Request): string {
-	return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-		|| request.headers.get('x-real-ip')
-		|| 'unknown';
+	// Prefer headers set by our own edge proxy — a client cannot forge these
+	// (the proxy overwrites them). Cloudflare sets cf-connecting-ip.
+	const trusted = request.headers.get('cf-connecting-ip')
+		|| request.headers.get('x-real-ip');
+	if (trusted) return trusted.trim();
+
+	// Fallback: x-forwarded-for. The client can PREPEND entries, so the
+	// leftmost value is attacker-controlled. Take the rightmost hop, which is
+	// the one appended by the closest trusted proxy.
+	const xff = request.headers.get('x-forwarded-for');
+	if (xff) {
+		const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
+		if (parts.length) return parts[parts.length - 1];
+	}
+
+	return 'unknown';
 }
 
 /** Strip Qwen3 <think>...</think> reasoning blocks from output */

@@ -33,6 +33,12 @@ class SessionState {
 		return this.saveTimer !== null;
 	}
 
+	/** Name of the currently active diagram (empty string if none). */
+	get activeDiagramName(): string {
+		const meta = this.diagrams.find((d) => d.id === this.activeDiagramId);
+		return meta?.name ?? '';
+	}
+
 	private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	private key(suffix: string): string {

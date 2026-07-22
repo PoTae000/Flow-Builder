@@ -151,7 +151,8 @@
 				tabindex="0"
 			>
 				{#if diagram.diagramType === 'er'}
-					{@const layout = getPreviewLayout(template)}
+					{@const erTemplate = template as DiagramTemplate}
+					{@const layout = getPreviewLayout(erTemplate)}
 					<!-- Mini ER diagram preview -->
 					<svg
 						class="mb-2 w-full rounded max-sm:landscape:mb-1"
@@ -160,7 +161,7 @@
 						preserveAspectRatio="xMidYMid meet"
 					>
 						<!-- Relationship lines (behind entities) -->
-						{#each template.relationships as rel}
+						{#each erTemplate.relationships as rel}
 							{@const fc = layout.centers.get(rel.entityIds[0]) ?? {x:0,y:0}}
 							{@const tc = layout.centers.get(rel.entityIds[1]) ?? {x:0,y:0}}
 							<path
@@ -172,7 +173,7 @@
 						{/each}
 
 						<!-- Entity cards -->
-						{#each template.entities as entity}
+						{#each erTemplate.entities as entity}
 							{@const c = layout.centers.get(entity.id) ?? {x:0,y:0}}
 							{@const rx = c.x - BOX_W / 2}
 							{@const ry = c.y - BOX_H / 2}
@@ -241,11 +242,11 @@
 					<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-secondary)] max-sm:landscape:text-[9px]">
 						<span class="flex items-center gap-1">
 							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-							{template.entities.length} เอนทิตี
+							{erTemplate.entities.length} เอนทิตี
 						</span>
 						<span class="flex items-center gap-1">
 							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
-							{template.relationships.length} ความสัมพันธ์
+							{erTemplate.relationships.length} ความสัมพันธ์
 						</span>
 					</div>
 				{:else}
@@ -266,22 +267,24 @@
 					<p class="mb-2 text-xs leading-relaxed text-[var(--ui-text-muted)] max-sm:landscape:mb-1 max-sm:landscape:text-[10px] max-sm:landscape:leading-snug">{template.description}</p>
 					<div class="flex items-center gap-3 text-[10px] text-[var(--ui-text-secondary)] max-sm:landscape:text-[9px]">
 						{#if diagram.diagramType === 'flowchart'}
+							{@const flowTemplate = template as FlowchartTemplate}
 							<span class="flex items-center gap-1">
 								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-								{template.flowNodes.length} โหนด
+								{flowTemplate.flowNodes.length} โหนด
 							</span>
 							<span class="flex items-center gap-1">
 								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-								{template.flowEdges.length} เส้นเชื่อม
+								{flowTemplate.flowEdges.length} เส้นเชื่อม
 							</span>
 						{:else}
+							{@const dfdTemplate = template as DFDTemplate}
 							<span class="flex items-center gap-1">
 								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-								{template.dfdNodes.length} โหนด
+								{dfdTemplate.dfdNodes.length} โหนด
 							</span>
 							<span class="flex items-center gap-1">
 								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-								{template.dfdFlows.length} data flow
+								{dfdTemplate.dfdFlows.length} data flow
 							</span>
 						{/if}
 					</div>

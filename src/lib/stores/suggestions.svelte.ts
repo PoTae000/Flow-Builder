@@ -18,7 +18,7 @@ class SuggestionState {
 		return !this.loading && Date.now() - this.lastFetchedAt >= COOLDOWN_MS;
 	}
 
-	async fetchSuggestions(payload: Record<string, any>, diagramType: DiagramType = 'er', _retry = 0) {
+	async fetchSuggestions(payload: Record<string, any>, diagramType: DiagramType = 'er', _retry = 0): Promise<void> {
 		if (!this.canFetch) return;
 
 		this.loading = true;

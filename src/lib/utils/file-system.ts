@@ -4,6 +4,22 @@
  * Falls back to blob download when running inside a cross-origin iframe
  */
 
+// File System Access API — not yet in the standard TS DOM lib.
+// Minimal ambient declarations for the members this module uses.
+interface FileSystemHandlePermissionDescriptor {
+	mode?: 'read' | 'readwrite';
+}
+declare global {
+	interface FileSystemFileHandle {
+		queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
+		requestPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
+	}
+	interface Window {
+		showSaveFilePicker(options?: unknown): Promise<FileSystemFileHandle>;
+		showOpenFilePicker(options?: unknown): Promise<FileSystemFileHandle[]>;
+	}
+}
+
 export interface DiagramFileHandle {
 	handle: FileSystemFileHandle;
 	fileName: string;
