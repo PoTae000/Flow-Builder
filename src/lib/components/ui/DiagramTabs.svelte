@@ -132,6 +132,7 @@
 
 				{#if !collab.connected}
 					<button
+						style="padding:0;min-width:0;min-height:0;"
 						class="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--ui-text-muted)] hover:bg-[var(--ui-bg-tertiary)] hover:text-[var(--ui-text)]"
 						aria-label="Delete diagram"
 						onclick={(e) => {
