@@ -421,6 +421,52 @@ class SyncState {
 	}
 
 	/**
+	 * Immediately push a single diagram to cloud — no 3s debounce. Used for
+	 * discrete actions (create, rename, duplicate) so they behave like delete:
+	 * reflected on other devices within one 5s poll cycle instead of waiting
+	 * for the idle debounce (or, for rename/duplicate, never syncing at all).
+	 */
+	async pushNow(meta: DiagramMeta, data: DiagramData): Promise<void> {
+		if (!this.canSync || this.errorCount >= SyncState.MAX_ERRORS) return;
+
+		// Offline: queue to IndexedDB, same as schedulePush.
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			enqueue({ operation: 'push', diagramId: meta.id, data, meta, timestamp: Date.now() });
+			return;
+		}
+
+		// This supersedes any debounced push already queued for this diagram.
+		const idx = this.pendingPush.findIndex((p) => p.meta.id === meta.id);
+		if (idx >= 0) this.pendingPush.splice(idx, 1);
+
+		this.status = 'syncing';
+		try {
+			const res = await this.fetchApi('/api/sync/push', {
+				method: 'POST',
+				body: JSON.stringify({ diagrams: [{ meta, data }] })
+			});
+			const d = (await res.json()) as { version?: number };
+			if (d.version) {
+				this.lastPushedVersion = d.version;
+				this.lastKnownVersion = d.version;
+			}
+			this.lastPushTime = Date.now();
+			this.errorCount = 0;
+			this.showSynced();
+		} catch (err) {
+			if (this.isFatalSyncError(err)) {
+				this.handleFatalError(err);
+			} else {
+				this.errorCount++;
+				console.warn(`[sync] pushNow failed (${this.errorCount}/${SyncState.MAX_ERRORS}):`, err);
+				this.status = 'error';
+				this.lastError = err instanceof Error ? err.message : 'Push failed';
+				if (this.errorCount >= SyncState.MAX_ERRORS) this.stopPolling();
+			}
+		}
+	}
+
+	/**
 	 * Immediately flush any pending push. Call on tab hide / unload / device
 	 * switch so cloud has the latest data before timers get frozen (mobile
 	 * backgrounding suspends setTimeout, which otherwise drops the pending push).

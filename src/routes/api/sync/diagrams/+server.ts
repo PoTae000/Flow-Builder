@@ -7,8 +7,8 @@ export const GET: RequestHandler = async ({ request }) => {
 	const { sub, remaining } = await authenticateAndRateLimit(request);
 
 	const [diagramsResult, stateResult, deletedResult] = await Promise.all([
-		pool.query<{ id: string; name: string; diagram_type: string; created_at: string; updated_at: string }>(
-			'SELECT id, name, diagram_type, created_at, updated_at FROM diagrams WHERE user_sub = $1',
+		pool.query<{ id: string; name: string; diagram_type: string; created_at: string; updated_at: string; pinned: boolean; tags: string[] }>(
+			'SELECT id, name, diagram_type, created_at, updated_at, pinned, tags FROM diagrams WHERE user_sub = $1',
 			[sub]
 		),
 		pool.query<{ active_diagram_id: string | null }>(
@@ -26,7 +26,9 @@ export const GET: RequestHandler = async ({ request }) => {
 		name: r.name,
 		diagramType: r.diagram_type,
 		createdAt: Number(r.created_at),
-		updatedAt: Number(r.updated_at)
+		updatedAt: Number(r.updated_at),
+		pinned: r.pinned === true,
+		tags: Array.isArray(r.tags) ? r.tags : []
 	}));
 
 	const active = stateResult.rows[0]?.active_diagram_id ?? null;

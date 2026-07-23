@@ -103,6 +103,8 @@ export async function initSchema(): Promise<void> {
 			data JSONB,
 			created_at BIGINT NOT NULL,
 			updated_at BIGINT NOT NULL,
+			pinned BOOLEAN DEFAULT FALSE,
+			tags JSONB DEFAULT '[]'::jsonb,
 			PRIMARY KEY (user_sub, id)
 		);
 
@@ -163,5 +165,11 @@ export async function initSchema(): Promise<void> {
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'basic';
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ;
+	`);
+
+	// Add pinned/tags to existing diagrams table (safe if already exist)
+	await pool.query(`
+		ALTER TABLE diagrams ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE;
+		ALTER TABLE diagrams ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
 	`);
 }

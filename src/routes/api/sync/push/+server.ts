@@ -18,6 +18,8 @@ interface DiagramMetaInput {
 	diagramType?: string;
 	createdAt: number;
 	updatedAt: number;
+	pinned?: boolean;
+	tags?: string[];
 }
 
 interface PushItem {
@@ -128,15 +130,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
 			const existingUpdatedAt = existingMap.get(itemId);
 			if (existingUpdatedAt === undefined || item.meta.updatedAt >= existingUpdatedAt) {
+				const tagsJson = JSON.stringify(Array.isArray(item.meta.tags) ? item.meta.tags : []);
 				await pool.query(
-					`INSERT INTO diagrams (id, user_sub, name, diagram_type, data, created_at, updated_at)
-					 VALUES ($1, $2, $3, $4, $5, $6, $7)
+					`INSERT INTO diagrams (id, user_sub, name, diagram_type, data, created_at, updated_at, pinned, tags)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 					 ON CONFLICT (user_sub, id) DO UPDATE SET
 					   name = EXCLUDED.name,
 					   diagram_type = EXCLUDED.diagram_type,
 					   data = EXCLUDED.data,
-					   updated_at = EXCLUDED.updated_at`,
-					[itemId, sub, item.meta.name || '', item.meta.diagramType || 'er', JSON.stringify(item.data), item.meta.createdAt, item.meta.updatedAt]
+					   updated_at = EXCLUDED.updated_at,
+					   pinned = EXCLUDED.pinned,
+					   tags = EXCLUDED.tags`,
+					[itemId, sub, item.meta.name || '', item.meta.diagramType || 'er', JSON.stringify(item.data), item.meta.createdAt, item.meta.updatedAt, item.meta.pinned === true, tagsJson]
 				);
 
 				if (!existingMap.has(itemId)) newCount++;

@@ -184,6 +184,14 @@ class SessionState {
 		this.activeDiagramId = id;
 		safeSave(this.key('active'), id);
 		this.saveDiagram();
+
+		// Push the new diagram to cloud immediately (don't wait for the 3s
+		// edit debounce) so other devices see it within one poll cycle.
+		const created = this.diagrams.find((d) => d.id === id);
+		if (created) {
+			const data = this.readLocalData(id);
+			if (data) sync.pushNow({ ...created }, data);
+		}
 	}
 
 	switchDiagram(id: string) {
@@ -198,7 +206,15 @@ class SessionState {
 		const newName = name.trim() || meta.name;
 		if (meta.name === newName) return;
 		meta.name = newName;
+		// Bump timestamp so the rename wins over an older cloud copy.
+		meta.updatedAt = Date.now();
 		this.saveMeta();
+
+		// Push the rename to cloud immediately so other devices pick it up
+		// within one poll cycle (previously renames never synced at all).
+		const data = this.readLocalData(id);
+		if (data) sync.pushNow({ ...meta }, data);
+
 		// Sync diagram name to collaborators
 		if (_collab?.connected && id === this.activeDiagramId) {
 			_collab.pushDiagramName(newName);
@@ -236,6 +252,8 @@ class SessionState {
 		// Save duplicated data
 		if (data) {
 			safeSave(this.key(`diagram:${newId}`), JSON.stringify(data));
+			// Push the copy to cloud immediately so other devices see it.
+			sync.pushNow({ ...meta }, data);
 		}
 
 		// Switch to the new diagram
@@ -268,12 +286,23 @@ class SessionState {
 		}
 	}
 
+	/** Persist a meta-only change (pin/tag) and push it to cloud immediately. */
+	private pushMetaChange(id: string) {
+		const meta = this.diagrams.find((d) => d.id === id);
+		if (!meta) return;
+		// Bump timestamp so this meta change wins over an older cloud copy.
+		meta.updatedAt = Date.now();
+		this.saveMeta();
+		const data = this.readLocalData(id);
+		if (data) sync.pushNow({ ...meta }, data);
+	}
+
 	togglePin(id: string) {
 		const meta = this.diagrams.find((d) => d.id === id);
 		if (!meta) return;
 		meta.pinned = !meta.pinned;
-		this.saveMeta();
 		this.sortDiagrams();
+		this.pushMetaChange(id);
 	}
 
 	addTag(id: string, tag: string) {
@@ -284,7 +313,7 @@ class SessionState {
 		if (!meta.tags) meta.tags = [];
 		if (meta.tags.includes(trimmedTag)) return; // avoid duplicates
 		meta.tags.push(trimmedTag);
-		this.saveMeta();
+		this.pushMetaChange(id);
 	}
 
 	removeTag(id: string, tag: string) {
@@ -292,7 +321,7 @@ class SessionState {
 		if (!meta || !meta.tags) return;
 		meta.tags = meta.tags.filter((t) => t !== tag);
 		if (meta.tags.length === 0) delete meta.tags;
-		this.saveMeta();
+		this.pushMetaChange(id);
 	}
 
 	private sortDiagrams() {
@@ -319,6 +348,16 @@ class SessionState {
 			this.saveTimer = null;
 		}
 		this.saveDiagram();
+	}
+
+	/** Read a diagram's data blob from localStorage (null if missing/corrupt). */
+	private readLocalData(id: string): DiagramData | null {
+		try {
+			const raw = localStorage.getItem(this.key(`diagram:${id}`));
+			return raw ? JSON.parse(raw) : null;
+		} catch {
+			return null;
+		}
 	}
 
 	/** Save only viewport (panX/panY/zoom) to localStorage. No timestamp bump, no cloud push. */
