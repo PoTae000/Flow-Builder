@@ -154,11 +154,12 @@
 		<!-- New tab button (hidden during collab) -->
 		{#if !collab.connected}
 			<button
+				style="padding:0;min-width:0;min-height:0;"
 				class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--ui-text-muted)] hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
 				aria-label="New diagram"
 				onclick={() => onnewdiagram?.()}
 			>
-				<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4" /></svg>
+				<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 4v16m8-8H4" /></svg>
 			</button>
 		{/if}
 	</div>
