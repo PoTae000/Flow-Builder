@@ -39,9 +39,9 @@
 
 	const headerInfo = $derived(TITLES[diagram.diagramType] ?? TITLES.er);
 
-	// Resizable snap sheet (Google-Maps-style): peek / half / full
-	const SNAP_POINTS = [0.4, 0.66, 0.92]; // fraction of viewport height
-	let snapIndex = $state(1); // start at "half"
+	// Resizable snap sheet (Google-Maps-style): mini / peek / half / full
+	const SNAP_POINTS = [0.14, 0.4, 0.66, 0.92]; // fraction of viewport height
+	let snapIndex = $state(2); // start at "half"
 	let dragStartY = $state(0);
 	let dragDeltaY = $state(0); // >0 dragged down (smaller), <0 dragged up (taller)
 	let dragging = $state(false);
@@ -49,7 +49,7 @@
 	// Reset to the middle snap each time the sheet opens
 	$effect(() => {
 		if (mobileOpen) {
-			snapIndex = 1;
+			snapIndex = 2;
 			dragDeltaY = 0;
 		}
 	});
@@ -59,9 +59,9 @@
 	// Current sheet height in px, following the finger while dragging
 	const sheetHeightPx = $derived(
 		Math.max(
-			80,
+			56,
 			Math.min(
-				viewportH * SNAP_POINTS[2],
+				viewportH * SNAP_POINTS[SNAP_POINTS.length - 1],
 				viewportH * SNAP_POINTS[snapIndex] - dragDeltaY
 			)
 		)
@@ -80,8 +80,9 @@
 
 	function handleSwipeEnd() {
 		const currentFrac = sheetHeightPx / viewportH;
-		// Below the smallest snap by a margin → close entirely
-		if (currentFrac < SNAP_POINTS[0] - 0.08) {
+		// Only close when dragged well below the smallest snap — otherwise it
+		// just rests at the "mini" peek instead of collapsing on its own.
+		if (currentFrac < SNAP_POINTS[0] - 0.05) {
 			onclose?.();
 			dragDeltaY = 0;
 			dragging = false;
