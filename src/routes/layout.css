@@ -163,8 +163,14 @@ svg.touch-canvas {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 @media (min-width: 1024px) and (max-width: 1366px) {
-	/* Increase touch targets for better tablet experience */
-	button, a, input[type="checkbox"], input[type="radio"] {
+	/* Larger touch targets for form controls only — NOT <button>, which
+	   would distort small icon buttons (they set their own size). Opt-in
+	   text/action buttons can use .touch-target instead. */
+	input[type="checkbox"], input[type="radio"] {
+		min-height: 24px;
+		min-width: 24px;
+	}
+	.touch-target {
 		min-height: 44px;
 		min-width: 44px;
 	}
@@ -245,15 +251,17 @@ svg.touch-canvas {
 
 /* Touch device optimizations */
 @media (hover: none) and (pointer: coarse) {
-	/* Increase button padding for touch */
-	button {
+	/* NOTE: do NOT add blanket `button { padding }` here — it bloats every
+	   icon button (delete-tab X, new-tab +, avatar, sync…) until the icon
+	   clips away. Buttons carry their own padding via Tailwind. Opt in with
+	   the .touch-pad utility where a bigger tap area is genuinely wanted. */
+	.touch-pad {
 		padding: 0.75rem 1rem;
 	}
 
 	/* Increase line height for better touch selection */
-	input, textarea, select {
+	input:not([type="checkbox"]):not([type="radio"]), textarea, select {
 		line-height: 1.6;
-		padding: 0.75rem;
 	}
 
 	/* Optimize SVG interaction for touch */
