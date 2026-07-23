@@ -69,6 +69,23 @@ class SyncState {
 		return this.errorCount >= SyncState.MAX_ERRORS;
 	}
 
+	/**
+	 * Manual "Sync now": flush any pending push, then pull latest from cloud.
+	 * Used by the Sync button so the user can force an immediate sync without
+	 * waiting for the idle debounce or the poll interval.
+	 */
+	async syncNow(): Promise<void> {
+		if (!this.canSync) return;
+		// Clear a paused state so a manual tap always tries again
+		if (this.errorCount >= SyncState.MAX_ERRORS) {
+			this.errorCount = 0;
+			this.status = 'idle';
+			this.lastError = null;
+		}
+		await this.flushNow();
+		if (this.pollTrigger) this.pollTrigger();
+	}
+
 	/** Retry sync after it has been paused due to errors */
 	retrySync() {
 		this.errorCount = 0;

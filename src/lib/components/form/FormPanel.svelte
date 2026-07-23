@@ -39,29 +39,64 @@
 
 	const headerInfo = $derived(TITLES[diagram.diagramType] ?? TITLES.er);
 
-	// Swipe-to-close
-	let swipeStartY = $state(0);
-	let swipeDeltaY = $state(0);
-	let swiping = $state(false);
+	// Resizable snap sheet (Google-Maps-style): peek / half / full
+	const SNAP_POINTS = [0.4, 0.66, 0.92]; // fraction of viewport height
+	let snapIndex = $state(1); // start at "half"
+	let dragStartY = $state(0);
+	let dragDeltaY = $state(0); // >0 dragged down (smaller), <0 dragged up (taller)
+	let dragging = $state(false);
+
+	// Reset to the middle snap each time the sheet opens
+	$effect(() => {
+		if (mobileOpen) {
+			snapIndex = 1;
+			dragDeltaY = 0;
+		}
+	});
+
+	const viewportH = $derived(typeof window !== 'undefined' ? window.innerHeight : 800);
+
+	// Current sheet height in px, following the finger while dragging
+	const sheetHeightPx = $derived(
+		Math.max(
+			80,
+			Math.min(
+				viewportH * SNAP_POINTS[2],
+				viewportH * SNAP_POINTS[snapIndex] - dragDeltaY
+			)
+		)
+	);
 
 	function handleSwipeStart(e: TouchEvent) {
-		swipeStartY = e.touches[0].clientY;
-		swipeDeltaY = 0;
-		swiping = true;
+		dragStartY = e.touches[0].clientY;
+		dragDeltaY = 0;
+		dragging = true;
 	}
 
 	function handleSwipeMove(e: TouchEvent) {
-		if (!swiping) return;
-		const dy = e.touches[0].clientY - swipeStartY;
-		swipeDeltaY = Math.max(0, dy);
+		if (!dragging) return;
+		dragDeltaY = e.touches[0].clientY - dragStartY;
 	}
 
 	function handleSwipeEnd() {
-		if (swipeDeltaY > 150) {
+		const currentFrac = sheetHeightPx / viewportH;
+		// Below the smallest snap by a margin → close entirely
+		if (currentFrac < SNAP_POINTS[0] - 0.08) {
 			onclose?.();
+			dragDeltaY = 0;
+			dragging = false;
+			return;
 		}
-		swipeDeltaY = 0;
-		swiping = false;
+		// Snap to the nearest defined point
+		let nearest = 0;
+		let best = Infinity;
+		for (let i = 0; i < SNAP_POINTS.length; i++) {
+			const d = Math.abs(SNAP_POINTS[i] - currentFrac);
+			if (d < best) { best = d; nearest = i; }
+		}
+		snapIndex = nearest;
+		dragDeltaY = 0;
+		dragging = false;
 	}
 </script>
 
@@ -158,36 +193,52 @@
 	<div class="fixed inset-0 z-20 bg-black/30 lg:hidden" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}></div>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<aside
-		class="mobile-panel fixed inset-x-0 bottom-0 z-30 flex max-h-[70vh] w-full flex-col rounded-t-2xl border-t border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl lg:hidden"
-		style="transform: translateY({swipeDeltaY}px); opacity: {Math.max(0.3, 1 - swipeDeltaY / 200)}; transition: {swiping ? 'none' : 'transform 0.2s ease-out, opacity 0.2s ease-out'};"
+		class="mobile-panel fixed inset-x-0 bottom-0 z-30 flex w-full flex-col rounded-t-2xl border-t border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl lg:hidden"
+		style="height: {sheetHeightPx}px; transition: {dragging ? 'none' : 'height 0.25s cubic-bezier(0.32,0.72,0,1)'};"
 	>
-		<!-- Drag handle -->
+		<!-- Drag handle — big touch target, drives snap resize -->
 		<div
-			class="flex justify-center py-2 cursor-grab"
+			class="flex shrink-0 flex-col items-center gap-1.5 py-3 cursor-grab active:cursor-grabbing"
+			style="touch-action:none;"
 			ontouchstart={handleSwipeStart}
 			ontouchmove={handleSwipeMove}
 			ontouchend={handleSwipeEnd}
 		>
-			<div class="h-1 w-10 rounded-full bg-[var(--ui-border)]"></div>
+			<div class="h-1.5 w-12 rounded-full bg-[var(--ui-text-muted)] opacity-40"></div>
 		</div>
 		<!-- Header -->
-		<div class="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-2">
-			<div>
-				<h1 class="text-base font-medium text-[var(--ui-text)]">{headerInfo.title}</h1>
-				<p class="text-xs text-[var(--ui-text-muted)]">{headerInfo.subtitle}</p>
+		<div class="flex shrink-0 items-center justify-between border-b border-[var(--ui-border)] px-4 pb-2">
+			<div class="min-w-0">
+				<h1 class="truncate text-base font-medium text-[var(--ui-text)]">{headerInfo.title}</h1>
+				<p class="truncate text-xs text-[var(--ui-text-muted)]">{headerInfo.subtitle}</p>
 			</div>
-			<button
-				class="rounded-lg p-1.5 text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
-				onclick={onclose}
-				title="Close panel"
-			>
-				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-			</button>
+			<div class="flex shrink-0 items-center gap-1">
+				<!-- Snap position dots -->
+				<div class="mr-1 flex items-center gap-1">
+					{#each SNAP_POINTS as _, i}
+						<button
+							class="h-1.5 w-1.5 rounded-full transition-all {i === snapIndex ? 'bg-[var(--ui-accent)] w-3' : 'bg-[var(--ui-text-muted)] opacity-40'}"
+							style="padding:0;min-width:0;min-height:0;"
+							aria-label="Snap size {i + 1}"
+							onclick={() => { snapIndex = i; dragDeltaY = 0; }}
+						></button>
+					{/each}
+				</div>
+				<button
+					style="padding:0;min-width:0;min-height:0;"
+					class="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+					onclick={onclose}
+					title="Close panel"
+					aria-label="Close panel"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+				</button>
+			</div>
 		</div>
 
 		<!-- Scrollable form area -->
 		<div class="min-h-0 flex-1 overflow-y-auto" style="touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;">
-			<div class="flex flex-col gap-5 p-4">
+			<div class="flex flex-col gap-5 p-4 pb-24">
 				{@render formContent()}
 			</div>
 		</div>
