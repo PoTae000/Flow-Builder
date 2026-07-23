@@ -375,42 +375,19 @@ class SessionState {
 		} catch { /* ignore */ }
 	}
 
-	/**
-	 * Save current diagram data to localStorage only (no updatedAt bump, no cloud push).
-	 * Used before sync to persist latest state without affecting timestamps.
-	 */
-	private saveLocalOnly() {
-		if (!this.activeDiagramId) return;
-		const data: DiagramData = {
-			entities: $state.snapshot(diagram.entities),
-			relationships: $state.snapshot(diagram.relationships),
-			notes: $state.snapshot(diagram.notes),
-			notation: diagram.notation,
-			diagramFont: diagram.diagramFont,
-			panX: diagram.panX,
-			panY: diagram.panY,
-			zoom: diagram.zoom,
-			diagramType: diagram.diagramType,
-			flowNodes: $state.snapshot(diagram.flowNodes),
-			flowEdges: $state.snapshot(diagram.flowEdges),
-			dfdNodes: $state.snapshot(diagram.dfdNodes),
-			dfdFlows: $state.snapshot(diagram.dfdFlows),
-			customFonts: $state.snapshot(diagram.customFonts)
-		};
-		safeSave(this.key(`diagram:${this.activeDiagramId}`), JSON.stringify(data));
-	}
-
 	/** Trigger a full cloud sync (async, non-blocking). */
 	triggerFullSync() {
 		if (!sync.canSync) return;
 
-		// Save current data to localStorage WITHOUT bumping updatedAt or pushing.
-		// This ensures getLocalData() returns the latest state for comparison,
-		// but doesn't make local appear "newer" than cloud.
+		// If there are unsaved local edits (save timer pending), this device is
+		// the latest writer — persist them WITH a fresh timestamp and push, so
+		// last-write-wins keeps them. Using saveLocalOnly() here (no timestamp
+		// bump) was the LWW bug: an in-progress edit looked older than an older
+		// cloud copy and got overwritten on the next focus/poll. saveNow() bumps
+		// updatedAt to now, schedules the push, and fullSync flushes it before
+		// comparing — so the live edit wins instead of being clobbered.
 		if (this.saveTimer) {
-			clearTimeout(this.saveTimer);
-			this.saveTimer = null;
-			this.saveLocalOnly();
+			this.saveNow();
 		}
 
 		const localMetas = [...$state.snapshot(this.diagrams)];
