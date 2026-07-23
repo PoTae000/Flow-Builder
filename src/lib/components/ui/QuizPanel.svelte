@@ -142,7 +142,12 @@
 	}
 
 	const cardStyle = $derived(() => {
-		const parts = [`width:420px`, `transform:scale(${cardScale})`, `transform-origin:0 0`];
+		const parts = [
+			`width:min(420px, calc(100vw - 2rem))`,
+			`max-height:80vh`,
+			`transform:scale(${cardScale})`,
+			`transform-origin:0 0`
+		];
 		if (cardX >= 0) {
 			parts.push(`left:${cardX}px`, `top:${cardY}px`, 'right:auto', 'bottom:auto');
 		}
@@ -446,7 +451,10 @@
 
 	<!-- Card body — collapsible -->
 	{#if !cardCollapsed}
-		<div class="flex-1 overflow-y-auto border-t border-[var(--ui-border)] quiz-card-body">
+		<div
+			class="min-h-0 flex-1 overflow-y-auto border-t border-[var(--ui-border)] quiz-card-body"
+			style="touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch"
+		>
 			{#if phase === 'building'}
 				<!-- Scenario -->
 				<div class="px-4 pt-3 pb-2">
