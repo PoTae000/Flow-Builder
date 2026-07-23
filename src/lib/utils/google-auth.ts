@@ -95,7 +95,8 @@ export function refreshToken(): Promise<void> {
 				handleCredentialResponse(response);
 				resolve();
 			},
-			auto_select: true
+			auto_select: true,
+			use_fedcm_for_prompt: true
 		});
 		google.accounts.id.prompt((notification: any) => {
 			if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
@@ -121,7 +122,8 @@ export function initGoogleAuth() {
 		google.accounts.id.initialize({
 			client_id: CLIENT_ID,
 			callback: handleCredentialResponse,
-			auto_select: true
+			auto_select: true,
+			use_fedcm_for_prompt: true
 		});
 		auth.googleReady = true;
 	};
