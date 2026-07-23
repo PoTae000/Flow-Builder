@@ -187,10 +187,8 @@
 	{/if}
 </aside>
 
-<!-- Mobile: bottom sheet overlay -->
+<!-- Mobile: bottom sheet (no backdrop — canvas behind stays interactive) -->
 {#if mobileOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-20 bg-black/30 lg:hidden" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}></div>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<aside
 		class="mobile-panel fixed inset-x-0 bottom-0 z-30 flex w-full flex-col rounded-t-2xl border-t border-[var(--ui-border)] bg-[var(--ui-bg)] shadow-2xl lg:hidden"
