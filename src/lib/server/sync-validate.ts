@@ -10,6 +10,7 @@ import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
 // --- Constants ---
 
 export const SYNC_RATE_LIMIT = 30; // req/min per authenticated user
+export const VERSION_RATE_LIMIT = 90; // req/min — lightweight poll endpoint (5s poll = 12/min)
 export const MAX_DIAGRAMS_PER_PUSH = 50;
 export const MAX_IDS_PER_PULL = 50;
 export const MAX_DIAGRAM_DATA_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -36,7 +37,8 @@ export function estimateDataSize(data: unknown): number {
 // --- Auth + Rate Limit ---
 
 export async function authenticateAndRateLimit(
-	request: Request
+	request: Request,
+	opts?: { bucket?: string; limit?: number }
 ): Promise<{ sub: string; remaining: number }> {
 	let payload;
 	try {
@@ -48,7 +50,11 @@ export async function authenticateAndRateLimit(
 	const sub = payload.sub;
 	if (!sub) throw error(401, 'Invalid token: missing sub');
 
-	const { allowed, remaining } = await checkRateLimit(`sync:${sub}`, SYNC_RATE_LIMIT);
+	// Separate rate-limit bucket per endpoint class so the fast version poll
+	// doesn't eat into the push/pull budget.
+	const bucket = opts?.bucket ?? 'sync';
+	const limit = opts?.limit ?? SYNC_RATE_LIMIT;
+	const { allowed, remaining } = await checkRateLimit(`${bucket}:${sub}`, limit);
 	if (!allowed) {
 		throw error(429, 'Rate limit exceeded. Try again in a minute.');
 	}

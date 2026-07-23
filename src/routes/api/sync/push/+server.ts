@@ -69,6 +69,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 		const existingMap = new Map(existingResult.rows.map(r => [r.id, Number(r.updated_at)]));
 
+		// Get tombstones so a stale device can't resurrect a deleted diagram.
+		const tombstoneResult = await pool.query<{ diagram_id: string; deleted_at: string }>(
+			'SELECT diagram_id, deleted_at FROM deleted_diagrams WHERE user_sub = $1',
+			[sub]
+		);
+		const tombstoneMap = new Map(tombstoneResult.rows.map(r => [r.diagram_id, Number(r.deleted_at)]));
+
 		const failed: FailedItem[] = [];
 		let accepted = 0;
 		let newCount = existingCount;
@@ -94,6 +101,23 @@ export const POST: RequestHandler = async ({ request }) => {
 			if (estimateDataSize(item.data) > MAX_DIAGRAM_DATA_SIZE) {
 				failed.push({ id: itemId, reason: 'Diagram data exceeds 5MB limit' });
 				continue;
+			}
+
+			// Tombstone guard: if this diagram was deleted, only accept the push
+			// when it's a genuine re-edit made AFTER the deletion. An older push
+			// is a stale device resurrecting a deleted diagram — reject it.
+			const tombstonedAt = tombstoneMap.get(itemId);
+			if (tombstonedAt !== undefined) {
+				if (item.meta.updatedAt <= tombstonedAt) {
+					failed.push({ id: itemId, reason: 'Diagram was deleted' });
+					continue;
+				}
+				// Newer than the tombstone → user re-created it; clear the tombstone.
+				await pool.query(
+					'DELETE FROM deleted_diagrams WHERE user_sub = $1 AND diagram_id = $2',
+					[sub, itemId]
+				);
+				tombstoneMap.delete(itemId);
 			}
 
 			// Check per-user diagram limit (only for new diagrams)

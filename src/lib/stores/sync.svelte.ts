@@ -228,10 +228,13 @@ class SyncState {
 			const cloud = (await res.json()) as {
 				diagrams: DiagramMeta[];
 				active: string | null;
+				deleted?: { id: string; deletedAt: number }[];
 			};
 
 			const cloudMap = new Map(cloud.diagrams.map((m) => [m.id, m]));
 			const localMap = new Map(localMetas.map((m) => [m.id, m]));
+			// Server-authoritative tombstones: id → when it was deleted.
+			const tombstones = new Map((cloud.deleted ?? []).map((d) => [d.id, d.deletedAt]));
 
 			// 2. Find diagrams that need to be pulled from cloud (cloud is newer)
 			const pullIds: string[] = [];
@@ -250,16 +253,25 @@ class SyncState {
 				}
 			}
 
-			// Process local-only diagrams (not in cloud)
+			// Process local-only diagrams (not in cloud). Decide push-vs-delete
+			// from the server tombstone list, NOT a per-device heuristic — that
+			// heuristic was resurrecting diagrams deleted on another device.
 			const pushItems: { meta: DiagramMeta; data: DiagramData }[] = [];
 			const remoteDeletedIds: string[] = [];
 			for (const [id, localMeta] of localMap) {
 				if (!cloudMap.has(id)) {
-					if (knownCloudIds.has(id)) {
-						// Was in cloud before, now gone → deleted remotely → delete locally
+					const tombstonedAt = tombstones.get(id);
+					if (tombstonedAt !== undefined && localMeta.updatedAt <= tombstonedAt) {
+						// Deleted on another device and we haven't edited it since →
+						// delete locally too.
+						remoteDeletedIds.push(id);
+					} else if (knownCloudIds.has(id) && tombstonedAt === undefined) {
+						// Was in cloud before, gone now, and no tombstone visible yet
+						// (defensive: e.g. tombstone list unavailable) → treat as
+						// remote delete rather than risk a resurrection loop.
 						remoteDeletedIds.push(id);
 					} else {
-						// Never been in cloud → new locally → push to cloud
+						// New locally, or re-edited after a deletion → push to cloud.
 						mergedMetas.set(id, localMeta);
 						const data = getLocalData(id);
 						if (data) {
@@ -522,10 +534,10 @@ class SyncState {
 
 	/**
 	 * Start periodic version polling for cloud sync.
-	 * Polls lightweight /api/sync/version every 30s.
+	 * Polls lightweight /api/sync/version every 5s (near-realtime).
 	 * Only triggers full sync when version changes AND isn't our own push.
 	 */
-	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 30_000) {
+	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 5_000) {
 		this.pollTrigger = triggerSync;
 		this.canPollFn = canPoll;
 		this.stopPolling();

@@ -112,6 +112,16 @@ export async function initSchema(): Promise<void> {
 			version BIGINT DEFAULT 0
 		);
 
+		-- Tombstones: records that a diagram was deleted, so other devices
+		-- delete it too instead of resurrecting it. No FK to diagrams (must
+		-- outlive the deleted row) — only scoped to the user.
+		CREATE TABLE IF NOT EXISTS deleted_diagrams (
+			user_sub TEXT NOT NULL REFERENCES users(sub),
+			diagram_id TEXT NOT NULL,
+			deleted_at BIGINT NOT NULL,
+			PRIMARY KEY (user_sub, diagram_id)
+		);
+
 		CREATE TABLE IF NOT EXISTS rate_limits (
 			key TEXT PRIMARY KEY,
 			count INT DEFAULT 0,
