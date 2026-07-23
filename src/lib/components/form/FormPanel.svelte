@@ -186,7 +186,7 @@
 		</div>
 
 		<!-- Scrollable form area -->
-		<div class="flex-1 overflow-y-auto">
+		<div class="min-h-0 flex-1 overflow-y-auto" style="touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;">
 			<div class="flex flex-col gap-5 p-4">
 				{@render formContent()}
 			</div>

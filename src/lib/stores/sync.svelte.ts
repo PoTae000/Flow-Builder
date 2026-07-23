@@ -388,7 +388,22 @@ class SyncState {
 		this.pushTimer = setTimeout(() => {
 			this.pushTimer = null;
 			this.flushPush();
-		}, 30_000);
+		}, 3_000);
+	}
+
+	/**
+	 * Immediately flush any pending push. Call on tab hide / unload / device
+	 * switch so cloud has the latest data before timers get frozen (mobile
+	 * backgrounding suspends setTimeout, which otherwise drops the pending push).
+	 */
+	async flushNow(): Promise<void> {
+		if (this.pushTimer) {
+			clearTimeout(this.pushTimer);
+			this.pushTimer = null;
+		}
+		if (this.pendingPush.length > 0) {
+			await this.flushPush();
+		}
 	}
 
 	private async flushPush() {

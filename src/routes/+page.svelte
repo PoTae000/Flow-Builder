@@ -404,6 +404,9 @@
 				() => !session.hasPendingSave
 			);
 		} else {
+			// Tab going hidden (mobile app-switch / screen lock): flush pending
+			// push NOW before setTimeout gets frozen, else the edit is lost.
+			sync.flushNow();
 			sync.stopPolling();
 		}
 	}
@@ -698,7 +701,8 @@
 
 <svelte:window
 	onkeydown={handleKeydown}
-	onbeforeunload={() => session.saveNow()}
+	onbeforeunload={() => { session.saveNow(); sync.flushNow(); }}
+	onpagehide={() => { session.saveNow(); sync.flushNow(); }}
 />
 
 <svelte:head>
