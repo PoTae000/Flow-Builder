@@ -105,7 +105,8 @@
 	}
 
 	function handleClose() {
-		highlight.clear();
+		// Keep highlights on the canvas after closing — user clears them
+		// explicitly via the Clear button (or the floating badge on the canvas).
 		onclose();
 	}
 </script>

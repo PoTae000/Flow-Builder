@@ -959,7 +959,33 @@
 
 <!-- SQL Query Visualizer panel (lazy) -->
 {#if showSqlQuery && SqlQueryPanel}
-	<SqlQueryPanel onclose={() => { showSqlQuery = false; highlight.clear(); }} />
+	<SqlQueryPanel onclose={() => { showSqlQuery = false; }} />
+{/if}
+
+<!-- Floating "clear highlight" badge — shows when highlights persist and panel is closed -->
+{#if highlight.active && !showSqlQuery}
+	<div class="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--ui-border)] bg-[var(--ui-bg)] py-1 pl-3 pr-1 shadow-lg animate-slide-up">
+		<button
+			type="button"
+			class="text-xs text-[var(--ui-text-secondary)] transition hover:text-[var(--ui-text)]"
+			style="padding:0;min-width:0;min-height:0;"
+			onclick={() => showSqlQuery = true}
+		>
+			<span class="inline-flex items-center gap-1.5">
+				<span class="h-2 w-2 rounded-full bg-blue-500"></span>
+				{highlight.entityIds.size} highlighted
+			</span>
+		</button>
+		<button
+			type="button"
+			class="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--ui-text-muted)] transition hover:bg-[var(--ui-hover)] hover:text-[var(--ui-text)]"
+			style="padding:0;min-width:0;min-height:0;"
+			aria-label="Clear highlight"
+			onclick={() => highlight.clear()}
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+		</button>
+	</div>
 {/if}
 
 <!-- Quiz panel (lazy) — stays mounted to preserve state -->
