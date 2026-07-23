@@ -10,14 +10,14 @@
 </script>
 
 {#if toast.toasts.length > 0}
-	<div class="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
+	<div class="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 z-[100] flex flex-col items-end gap-2 pointer-events-none">
 		{#each toast.toasts as t (t.id)}
 			{@const s = typeStyles[t.type] || typeStyles.info}
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 			<div
 				class="pointer-events-auto flex items-center gap-2.5 rounded-lg border px-4 py-2.5 shadow-lg {t.exiting ? 'toast-exit' : 'toast-enter'} {s.bg} {s.border} {s.text}"
 				onclick={() => toast.dismiss(t.id)}
-				style="cursor: pointer; max-width: 360px;"
+				style="cursor: pointer; max-width: min(360px, 100%);"
 			>
 				<svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={s.icon} />

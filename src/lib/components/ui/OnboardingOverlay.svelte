@@ -101,7 +101,7 @@
 			return 'left: 50%; top: 50%; transform: translate(-50%, -50%);';
 		}
 
-		const tooltipW = 320;
+		const tooltipW = Math.min(320, window.innerWidth - 24);
 		const tooltipH = 120;
 		const gap = 16;
 		const winW = window.innerWidth;
@@ -189,7 +189,7 @@
 
 	<!-- Tooltip card -->
 	<div
-		class="absolute z-10 w-80 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl animate-scale-in"
+		class="absolute z-10 w-80 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl animate-scale-in"
 		style={tooltipStyle}
 	>
 		<!-- Step counter -->

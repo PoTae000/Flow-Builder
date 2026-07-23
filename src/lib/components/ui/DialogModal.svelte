@@ -24,7 +24,7 @@
 	></div>
 
 	<!-- Dialog -->
-	<div class="fixed left-1/2 top-1/2 z-[61] w-[340px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl dialog-content">
+	<div class="fixed left-1/2 top-1/2 z-[61] w-[calc(100vw-2rem)] max-w-[340px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl dialog-content">
 		<!-- Icon + Title -->
 		<div class="mb-3 flex items-start gap-3">
 			{#if isDanger}
