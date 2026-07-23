@@ -243,14 +243,24 @@ class SessionState {
 	}
 
 	deleteDiagram(id: string) {
-		if (this.diagrams.length <= 1) return; // don't delete last diagram
+		// Deleting the last diagram: remove it, then create a fresh blank one
+		// (never leave the app with zero diagrams)
+		const isLast = this.diagrams.length <= 1;
 
 		this.diagrams = this.diagrams.filter((d) => d.id !== id);
 		localStorage.removeItem(this.key(`diagram:${id}`));
-		this.saveMeta();
 
 		// Delete from cloud
 		sync.pushDelete(id);
+
+		if (isLast) {
+			// createDiagram saves meta, loads the new blank diagram, and triggers sync
+			this.activeDiagramId = null;
+			this.createDiagram('Untitled Diagram');
+			return;
+		}
+
+		this.saveMeta();
 
 		// If we deleted the active diagram, switch to first remaining
 		if (this.activeDiagramId === id) {

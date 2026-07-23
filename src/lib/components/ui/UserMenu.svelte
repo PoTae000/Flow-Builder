@@ -64,7 +64,8 @@
 {#if auth.isSignedIn}
 	<div class="relative">
 		<button
-			class="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-[var(--ui-border)] hover:ring-[var(--ui-accent)] transition-all aspect-square"
+			style="width:24px;height:24px;min-width:24px;min-height:24px;"
+			class="relative flex shrink-0 grow-0 basis-auto items-center justify-center overflow-hidden rounded-full ring-1 ring-[var(--ui-border)] hover:ring-[var(--ui-accent)] transition-all aspect-square"
 			aria-label="User menu"
 			onclick={() => (showDropdown = !showDropdown)}
 		>

@@ -34,10 +34,12 @@
 	}
 
 	async function handleDelete(id: string, name: string) {
-		if (session.diagrams.length <= 1) return;
+		const isLast = session.diagrams.length <= 1;
 		const confirmed = await dialog.confirm({
 			title: 'ลบ Diagram',
-			message: `ต้องการลบ "${name}" หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`,
+			message: isLast
+				? `ต้องการลบ "${name}" หรือไม่? เนื้อหาจะถูกล้างและเริ่ม Diagram ใหม่`
+				: `ต้องการลบ "${name}" หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`,
 			confirmText: 'ลบ',
 			cancelText: 'ยกเลิก',
 			variant: 'danger'
@@ -118,7 +120,7 @@
 				{:else}
 					<button
 						type="button"
-						class="truncate border-none bg-transparent px-2.5 text-xs transition-colors duration-200 {isActive
+						class="min-w-0 flex-1 truncate border-none bg-transparent px-2.5 text-xs transition-colors duration-200 {isActive
 							? 'text-[var(--ui-text)] font-normal tab-active-anim'
 							: 'text-[var(--ui-text-muted)] font-light'} cursor-pointer outline-none"
 						onclick={() => { if (!collab.connected) session.switchDiagram(tab.id); }}
@@ -128,16 +130,21 @@
 					</button>
 				{/if}
 
-				{#if session.diagrams.length > 1 && !collab.connected}
+				{#if !collab.connected}
 					<button
-						class="mr-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--ui-text-muted)] hover:bg-[var(--ui-bg-tertiary)] hover:text-[var(--ui-text)]"
+						class="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--ui-text-muted)] hover:bg-[var(--ui-bg-tertiary)] hover:text-[var(--ui-text)]"
 						aria-label="Delete diagram"
 						onclick={(e) => {
 							e.stopPropagation();
 							handleDelete(tab.id, tab.name);
 						}}
+						ontouchend={(e) => {
+							e.stopPropagation();
+							e.preventDefault();
+							handleDelete(tab.id, tab.name);
+						}}
 					>
-						<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
 					</button>
 				{/if}
 			</div>
