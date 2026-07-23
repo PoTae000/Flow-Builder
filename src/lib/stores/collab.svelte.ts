@@ -274,14 +274,23 @@ export class CollabState {
 
 		this._doc = new Y.Doc();
 
-		const signalingUrl = PUBLIC_SIGNALING_URL || 'wss://signaling.yjs.dev';
+		// Use MULTIPLE signaling servers so a cold-started/asleep primary
+		// (Render free tier sleeps after 15 min → first join fails until it
+		// wakes) doesn't block joining — peers can rendezvous on any shared
+		// server. Public y-webrtc servers act as always-on fallbacks.
+		const signalingServers = [
+			...(PUBLIC_SIGNALING_URL ? [PUBLIC_SIGNALING_URL] : []),
+			'wss://signaling.yjs.dev',
+			'wss://y-webrtc-signaling-eu.herokuapp.com',
+			'wss://y-webrtc-signaling-us.herokuapp.com'
+		];
 		// Topic: if no token provided, use room ID only (public room)
 		// If token provided, include it for private room
 		const topic = this.roomToken
 			? `er-diagram-${roomId}-${this.roomToken}`
 			: `er-diagram-${roomId}`;
 		this._provider = new WebrtcProvider(topic, this._doc, {
-			signaling: [signalingUrl]
+			signaling: signalingServers
 		});
 
 		this.connected = true;

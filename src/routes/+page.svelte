@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { PUBLIC_SIGNALING_URL } from '$env/static/public';
 	import FormPanel from '$lib/components/form/FormPanel.svelte';
 	import DiagramCanvas from '$lib/components/diagram/DiagramCanvas.svelte';
 	import Toolbar from '$lib/components/ui/Toolbar.svelte';
@@ -413,6 +414,19 @@
 
 	onMount(async () => {
 		document.addEventListener('visibilitychange', handleVisibility);
+
+		// Warm up the collab signaling server (Render free tier sleeps after
+		// ~15 min idle; first join otherwise fails during its ~50s cold start).
+		// Fire-and-forget an HTTP ping so it's awake by the time the user
+		// opens Collab. no-cors: we don't read the response, just wake the dyno.
+		try {
+			if (PUBLIC_SIGNALING_URL && PUBLIC_SIGNALING_URL.includes('onrender.com')) {
+				fetch(PUBLIC_SIGNALING_URL.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:'), {
+					mode: 'no-cors',
+					cache: 'no-store'
+				}).catch(() => {});
+			}
+		} catch { /* ignore */ }
 
 		// Handle Stripe checkout return
 		const params = new URLSearchParams(window.location.search);
