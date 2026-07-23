@@ -104,7 +104,16 @@
       "Bash(git log:*)",
       "Skill(update-config)",
       "Bash(echo \"exit-grep:$?\")",
-      "Bash(echo \"grep-exit:$?\")"
+      "Bash(echo \"grep-exit:$?\")",
+      "Bash(command -v wrangler flarectl cloudflared)",
+      "Read(//c/Users/MaFuckingGod/**)",
+      "Read(//c/Users/MaFuckingGod/.wrangler/config/**)",
+      "Bash(nslookup -type=NS suepskun.online)",
+      "Bash(nslookup flow-builder.suepskun.online)",
+      "Bash(command -v wrangler npx)",
+      "Bash(command -v ssh)",
+      "Bash(ssh *)",
+      "Bash(ssh-add -l)"
     ]
   }
 }

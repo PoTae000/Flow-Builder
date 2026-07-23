@@ -1851,7 +1851,7 @@
 		if (collab.isViewer) return;
 		// Only handle canvas touches (not entity/relationship touches which are handled separately)
 		const target = e.target as Element;
-		if (target.closest('.entity-node') || target.closest('.flow-node') || target.closest('.dfd-node') || target.closest('.relationship-edge')) return;
+		if (target.closest('.entity-node') || target.closest('.flow-node') || target.closest('.dfd-node') || target.closest('.relationship-edge') || target.closest('.chen-attribute')) return;
 
 		if (e.touches.length === 1) {
 			// Single finger on canvas → pan
