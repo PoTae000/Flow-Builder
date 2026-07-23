@@ -5,8 +5,10 @@
 	import { parseSqlQuery, type ParsedQuery } from '$lib/utils/sql-query-parser';
 
 	let {
+		visible = true,
 		onclose
 	}: {
+		visible?: boolean;
 		onclose: () => void;
 	} = $props();
 
@@ -111,6 +113,7 @@
 	}
 </script>
 
+{#if visible}
 <!-- Backdrop -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
@@ -245,3 +248,4 @@
 		{/if}
 	</div>
 </div>
+{/if}

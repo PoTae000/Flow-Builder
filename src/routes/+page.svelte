@@ -957,9 +957,9 @@
 	<RelationshipMatrixPanel onclose={() => showMatrix = false} />
 {/if}
 
-<!-- SQL Query Visualizer panel (lazy) -->
-{#if showSqlQuery && SqlQueryPanel}
-	<SqlQueryPanel onclose={() => { showSqlQuery = false; }} />
+<!-- SQL Query Visualizer panel (lazy) — stays mounted to preserve SQL + results -->
+{#if SqlQueryPanel}
+	<SqlQueryPanel visible={showSqlQuery} onclose={() => { showSqlQuery = false; }} />
 {/if}
 
 <!-- Floating "clear highlight" badge — shows when highlights persist and panel is closed -->
