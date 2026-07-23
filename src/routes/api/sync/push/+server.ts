@@ -72,11 +72,18 @@ export const POST: RequestHandler = async ({ request }) => {
 		const existingMap = new Map(existingResult.rows.map(r => [r.id, Number(r.updated_at)]));
 
 		// Get tombstones so a stale device can't resurrect a deleted diagram.
-		const tombstoneResult = await pool.query<{ diagram_id: string; deleted_at: string }>(
-			'SELECT diagram_id, deleted_at FROM deleted_diagrams WHERE user_sub = $1',
-			[sub]
-		);
-		const tombstoneMap = new Map(tombstoneResult.rows.map(r => [r.diagram_id, Number(r.deleted_at)]));
+		// Best-effort: if the table isn't there yet (migration lag), skip the
+		// guard rather than failing the whole push.
+		let tombstoneMap = new Map<string, number>();
+		try {
+			const tombstoneResult = await pool.query<{ diagram_id: string; deleted_at: string }>(
+				'SELECT diagram_id, deleted_at FROM deleted_diagrams WHERE user_sub = $1',
+				[sub]
+			);
+			tombstoneMap = new Map(tombstoneResult.rows.map(r => [r.diagram_id, Number(r.deleted_at)]));
+		} catch (tombErr) {
+			console.warn('[sync/push] tombstone lookup skipped:', tombErr);
+		}
 
 		const failed: FailedItem[] = [];
 		let accepted = 0;
@@ -130,19 +137,30 @@ export const POST: RequestHandler = async ({ request }) => {
 
 			const existingUpdatedAt = existingMap.get(itemId);
 			if (existingUpdatedAt === undefined || item.meta.updatedAt >= existingUpdatedAt) {
-				const tagsJson = JSON.stringify(Array.isArray(item.meta.tags) ? item.meta.tags : []);
+				// Core upsert — MUST NOT depend on pinned/tags columns, so a
+				// missing migration can never block diagram data from syncing.
 				await pool.query(
-					`INSERT INTO diagrams (id, user_sub, name, diagram_type, data, created_at, updated_at, pinned, tags)
-					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+					`INSERT INTO diagrams (id, user_sub, name, diagram_type, data, created_at, updated_at)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7)
 					 ON CONFLICT (user_sub, id) DO UPDATE SET
 					   name = EXCLUDED.name,
 					   diagram_type = EXCLUDED.diagram_type,
 					   data = EXCLUDED.data,
-					   updated_at = EXCLUDED.updated_at,
-					   pinned = EXCLUDED.pinned,
-					   tags = EXCLUDED.tags`,
-					[itemId, sub, item.meta.name || '', item.meta.diagramType || 'er', JSON.stringify(item.data), item.meta.createdAt, item.meta.updatedAt, item.meta.pinned === true, tagsJson]
+					   updated_at = EXCLUDED.updated_at`,
+					[itemId, sub, item.meta.name || '', item.meta.diagramType || 'er', JSON.stringify(item.data), item.meta.createdAt, item.meta.updatedAt]
 				);
+
+				// Pin/tags are best-effort: if the columns aren't there yet
+				// (migration lag), swallow the error rather than failing the push.
+				try {
+					const tagsJson = JSON.stringify(Array.isArray(item.meta.tags) ? item.meta.tags : []);
+					await pool.query(
+						`UPDATE diagrams SET pinned = $3, tags = $4 WHERE user_sub = $1 AND id = $2`,
+						[sub, itemId, item.meta.pinned === true, tagsJson]
+					);
+				} catch (metaErr) {
+					console.warn('[sync/push] pinned/tags update skipped:', metaErr);
+				}
 
 				if (!existingMap.has(itemId)) newCount++;
 				existingMap.set(itemId, item.meta.updatedAt);

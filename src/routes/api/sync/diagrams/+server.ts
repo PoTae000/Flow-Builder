@@ -6,11 +6,25 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ request }) => {
 	const { sub, remaining } = await authenticateAndRateLimit(request);
 
+	// Diagram list: try with pinned/tags, fall back to the core columns if the
+	// migration hasn't run yet, so a missing column never breaks pull.
+	type DiagramRow = { id: string; name: string; diagram_type: string; created_at: string; updated_at: string; pinned?: boolean; tags?: string[] };
+	const loadDiagrams = async () => {
+		try {
+			return await pool.query<DiagramRow>(
+				'SELECT id, name, diagram_type, created_at, updated_at, pinned, tags FROM diagrams WHERE user_sub = $1',
+				[sub]
+			);
+		} catch {
+			return await pool.query<DiagramRow>(
+				'SELECT id, name, diagram_type, created_at, updated_at FROM diagrams WHERE user_sub = $1',
+				[sub]
+			);
+		}
+	};
+
 	const [diagramsResult, stateResult, deletedResult] = await Promise.all([
-		pool.query<{ id: string; name: string; diagram_type: string; created_at: string; updated_at: string; pinned: boolean; tags: string[] }>(
-			'SELECT id, name, diagram_type, created_at, updated_at, pinned, tags FROM diagrams WHERE user_sub = $1',
-			[sub]
-		),
+		loadDiagrams(),
 		pool.query<{ active_diagram_id: string | null }>(
 			'SELECT active_diagram_id FROM user_state WHERE user_sub = $1',
 			[sub]

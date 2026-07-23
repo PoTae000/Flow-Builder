@@ -23,9 +23,11 @@ class SyncState {
 	private lastKnownVersion = 0;
 	private lastPushedVersion = 0;
 	private fullSyncInFlight = false;
-	/** Consecutive error count — stops all sync after 2 failures */
+	/** Consecutive error count — stops all sync after too many failures.
+	 * Kept generous so transient mobile-network blips don't brick sync;
+	 * genuinely fatal errors (auth/quota) pause immediately via handleFatalError. */
 	private errorCount = 0;
-	private static MAX_ERRORS = 2;
+	private static MAX_ERRORS = 6;
 
 	/** Check if an error is fatal (auth or quota — no point retrying) */
 	private isFatalSyncError(err: unknown): boolean {
