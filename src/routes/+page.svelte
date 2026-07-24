@@ -380,11 +380,14 @@
 			collab.tryRejoin();
 		}
 
-		// Start periodic cloud sync polling
+		// Realtime cross-device sync: open an SSE stream so another device's push
+		// pulls here instantly. Keep a slow backup poll for when the stream drops.
 		if (sync.canSync) {
+			void sync.startEventStream(() => session.triggerFullSync()).catch(() => {});
 			sync.startPolling(
 				() => session.triggerFullSync(),
-				() => !session.hasPendingSave
+				() => !session.hasPendingSave,
+				15_000
 			);
 		}
 
@@ -400,15 +403,18 @@
 	function handleVisibility() {
 		if (document.visibilityState === 'visible' && ready && auth.isSignedIn && sync.canSync) {
 			session.triggerFullSync();
+			void sync.startEventStream(() => session.triggerFullSync()).catch(() => {});
 			sync.startPolling(
 				() => session.triggerFullSync(),
-				() => !session.hasPendingSave
+				() => !session.hasPendingSave,
+				15_000
 			);
 		} else {
 			// Tab going hidden (mobile app-switch / screen lock): flush pending
 			// push NOW before setTimeout gets frozen, else the edit is lost.
 			sync.flushNow();
 			sync.stopPolling();
+			sync.stopEventStream();
 		}
 	}
 

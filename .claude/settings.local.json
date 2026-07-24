@@ -113,7 +113,9 @@
       "Bash(command -v wrangler npx)",
       "Bash(command -v ssh)",
       "Bash(ssh *)",
-      "Bash(ssh-add -l)"
+      "Bash(ssh-add -l)",
+      "Bash(PORT=5199 node build)",
+      "Bash(kill %1)"
     ]
   }
 }

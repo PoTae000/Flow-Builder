@@ -1,5 +1,6 @@
 import { auth } from '$lib/stores/auth.svelte';
 import { session } from '$lib/stores/session.svelte';
+import { sync } from '$lib/stores/sync.svelte';
 import type { UserProfile } from '$lib/types/session';
 import { PUBLIC_GOOGLE_CLIENT_ID } from '$env/static/public';
 
@@ -154,6 +155,11 @@ export function triggerSignIn() {
 
 export function triggerSignOut() {
 	session.saveNow();
+
+	// Close the realtime stream + polling before the token is removed, so no
+	// stale connection lingers with a revoked token.
+	sync.stopEventStream();
+	sync.stopPolling();
 
 	// Remove ID token for cloud sync
 	sessionStorage.removeItem('er-diagram:id-token');

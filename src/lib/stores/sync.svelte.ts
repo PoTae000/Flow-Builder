@@ -16,6 +16,15 @@ class SyncState {
 	private pollTrigger: (() => void) | null = null;
 	private canPollFn: (() => boolean) | null = null;
 
+	// --- Realtime push (SSE) ---
+	/** Live EventSource for realtime cross-device notifications. */
+	private eventSource: EventSource | null = null;
+	/** Stable per-tab connection id: lets the server skip our own pushes. */
+	private connId: string | null = null;
+	/** Backoff timer for reconnecting a dropped SSE stream. */
+	private sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	private sseReconnectDelay = 1_000;
+
 	// Token refresh lock to prevent concurrent refreshes
 	private refreshPromise: Promise<void> | null = null;
 
@@ -313,7 +322,8 @@ class SyncState {
 					method: 'POST',
 					body: JSON.stringify({
 						diagrams: pushItems,
-						active: localActive
+						active: localActive,
+						cid: this.connId
 					})
 				});
 				const pushData = (await pushRes.json()) as { version?: number };
@@ -339,7 +349,8 @@ class SyncState {
 					method: 'POST',
 					body: JSON.stringify({
 						diagrams: localNewerPush,
-						active: localActive
+						active: localActive,
+						cid: this.connId
 					})
 				});
 				const pushData = (await pushRes.json()) as { version?: number };
@@ -445,7 +456,7 @@ class SyncState {
 		try {
 			const res = await this.fetchApi('/api/sync/push', {
 				method: 'POST',
-				body: JSON.stringify({ diagrams: [{ meta, data }] })
+				body: JSON.stringify({ diagrams: [{ meta, data }], cid: this.connId })
 			});
 			const d = (await res.json()) as { version?: number };
 			if (d.version) {
@@ -494,7 +505,7 @@ class SyncState {
 		try {
 			const res = await this.fetchApi('/api/sync/push', {
 				method: 'POST',
-				body: JSON.stringify({ diagrams: items })
+				body: JSON.stringify({ diagrams: items, cid: this.connId })
 			});
 			const data = (await res.json()) as { version?: number };
 			if (data.version) {
@@ -629,6 +640,105 @@ class SyncState {
 		}
 	}
 
+	/**
+	 * Open a realtime SSE stream so another device's push triggers an immediate
+	 * pull here — no waiting for the poll interval. The slow backup poll keeps
+	 * running so a dropped stream (proxy timeout, sleep/wake) still recovers.
+	 *
+	 * `triggerSync` is the same full-sync callback used by polling. Safe to call
+	 * repeatedly — it no-ops if a stream is already open.
+	 */
+	async startEventStream(triggerSync: () => void) {
+		if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+		if (!this.canSync) return;
+		if (this.eventSource) return;
+
+		this.pollTrigger = triggerSync;
+
+		// Refresh an expired token BEFORE opening the stream — EventSource can't
+		// retry with a new token on its own, so a stale one would 401-loop.
+		try {
+			const { isTokenValid, refreshToken } = await import('$lib/utils/google-auth');
+			if (!isTokenValid()) {
+				if (!this.refreshPromise) {
+					this.refreshPromise = refreshToken().finally(() => { this.refreshPromise = null; });
+				}
+				await this.refreshPromise;
+			}
+		} catch {
+			// Refresh failed — skip the stream; the backup poll still runs.
+			return;
+		}
+
+		// canSync may have changed during the await (e.g. signed out).
+		if (!this.canSync || this.eventSource) return;
+
+		const token = this.getToken();
+		if (!token) return;
+
+		// Stable per-tab connection id so the server can skip our own pushes.
+		if (!this.connId) {
+			this.connId =
+				typeof crypto !== 'undefined' && crypto.randomUUID
+					? crypto.randomUUID()
+					: `c-${performance.now().toString(36)}-${token.slice(-8)}`;
+		}
+
+		const url = `/api/sync/events?token=${encodeURIComponent(token)}&cid=${encodeURIComponent(this.connId)}`;
+		let es: EventSource;
+		try {
+			es = new EventSource(url);
+		} catch {
+			return;
+		}
+		this.eventSource = es;
+
+		es.addEventListener('open', () => {
+			// Connected — reset backoff.
+			this.sseReconnectDelay = 1_000;
+		});
+
+		es.addEventListener('changed', () => {
+			// Another device changed the cloud — pull now (skip if we have unsaved
+			// edits or a pending push; those flush first via the normal path).
+			if (this.hasPendingPush) return;
+			if (this.canPollFn && !this.canPollFn()) return;
+			if (this.pollTrigger) this.pollTrigger();
+		});
+
+		es.addEventListener('error', () => {
+			// EventSource auto-reconnects on transient drops, but a stale token
+			// will loop on 401. Close and reconnect with a fresh token + backoff.
+			this.restartEventStreamWithBackoff();
+		});
+	}
+
+	private restartEventStreamWithBackoff() {
+		if (this.eventSource) {
+			this.eventSource.close();
+			this.eventSource = null;
+		}
+		if (this.sseReconnectTimer) return; // already scheduled
+		const delay = this.sseReconnectDelay;
+		this.sseReconnectDelay = Math.min(this.sseReconnectDelay * 2, 30_000);
+		this.sseReconnectTimer = setTimeout(() => {
+			this.sseReconnectTimer = null;
+			if (this.pollTrigger) void this.startEventStream(this.pollTrigger).catch(() => {});
+		}, delay);
+	}
+
+	stopEventStream() {
+		if (this.sseReconnectTimer) {
+			clearTimeout(this.sseReconnectTimer);
+			this.sseReconnectTimer = null;
+		}
+		if (this.eventSource) {
+			this.eventSource.close();
+			this.eventSource = null;
+		}
+		this.sseReconnectDelay = 1_000;
+	}
+
 	// --- Cloud Version History ---
 
 	async fetchVersions(diagramId: string): Promise<VersionMeta[]> {
@@ -711,6 +821,8 @@ class SyncState {
 		this.fullSyncInFlight = false;
 		this.errorCount = 0;
 		this.stopPolling();
+		this.stopEventStream();
+		this.connId = null;
 		this.pollTrigger = null;
 		this.canPollFn = null;
 		if (this.pushTimer) {

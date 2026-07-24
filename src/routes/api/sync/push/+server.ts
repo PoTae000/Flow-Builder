@@ -10,6 +10,7 @@ import {
 	MAX_DIAGRAMS_PER_USER
 } from '$lib/server/sync-validate';
 import { pool, ensureUser } from '$lib/server/db';
+import { notifyUser } from '$lib/server/sync-events';
 import type { RequestHandler } from './$types';
 
 interface DiagramMetaInput {
@@ -35,14 +36,14 @@ interface FailedItem {
 export const POST: RequestHandler = async ({ request }) => {
 	const { sub, remaining } = await authenticateAndRateLimit(request);
 
-	let body: { diagrams: PushItem[]; active?: string };
+	let body: { diagrams: PushItem[]; active?: string; cid?: string };
 	try {
 		body = await request.json();
 	} catch {
 		throw error(400, 'Invalid JSON body');
 	}
 
-	const { diagrams, active } = body;
+	const { diagrams, active, cid } = body;
 	if (!Array.isArray(diagrams)) throw error(400, 'Invalid request body: diagrams must be array');
 
 	if (diagrams.length > MAX_DIAGRAMS_PER_PUSH) {
@@ -196,6 +197,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			   version = $3`,
 			[sub, active || null, newVersion]
 		);
+
+		// Notify this user's OTHER connected devices to pull immediately (SSE).
+		// The pushing device (cid) is skipped so it doesn't re-pull its own write.
+		notifyUser(sub, newVersion, cid);
 
 		const result: Record<string, unknown> = { ok: true, count: accepted, version: newVersion };
 		if (failed.length > 0) {
