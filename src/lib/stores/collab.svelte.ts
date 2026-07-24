@@ -274,15 +274,16 @@ export class CollabState {
 
 		this._doc = new Y.Doc();
 
-		// Primary is our own signaling server (PUBLIC_SIGNALING_URL). yjs.dev is
-		// kept as one public fallback so peers can still rendezvous if ours is
-		// briefly unreachable. The old heroku fallbacks were removed — those
-		// hosts shut down in 2022 and only produced endless failed WebSocket
-		// reconnects (the console error spam), never a real connection.
-		const signalingServers = [
-			...(PUBLIC_SIGNALING_URL ? [PUBLIC_SIGNALING_URL] : []),
-			'wss://signaling.yjs.dev'
-		];
+		// Use ONLY our own self-hosted signaling server (PUBLIC_SIGNALING_URL,
+		// e.g. the Pi behind Cloudflare Tunnel). It runs 24/7 with no cold start,
+		// so public fallbacks are unnecessary — and they were actively harmful:
+		// signaling.yjs.dev fails DNS resolution on some networks
+		// (ERR_NAME_NOT_RESOLVED) and y-webrtc retries every listed server
+		// forever, producing endless console spam. One reliable server beats
+		// several flaky ones. Falls back to yjs.dev only if no URL is configured.
+		const signalingServers = PUBLIC_SIGNALING_URL
+			? [PUBLIC_SIGNALING_URL]
+			: ['wss://signaling.yjs.dev'];
 		// Topic: if no token provided, use room ID only (public room)
 		// If token provided, include it for private room
 		const topic = this.roomToken
