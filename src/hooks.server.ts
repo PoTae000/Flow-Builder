@@ -90,7 +90,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		"style-src 'self' fonts.googleapis.com accounts.google.com 'unsafe-inline'",
 		"font-src 'self' fonts.gstatic.com",
 		"img-src 'self' data: blob: *.googleusercontent.com",
-		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com fonts.googleapis.com cloudflareinsights.com wss://signaling.yjs.dev wss://*.onrender.com https://*.onrender.com wss://*.herokuapp.com",
+		"connect-src 'self' api.groq.com accounts.google.com www.googleapis.com fonts.googleapis.com cloudflareinsights.com wss://signaling.yjs.dev wss://*.suepskun.online wss://*.onrender.com https://*.onrender.com wss://*.herokuapp.com",
 		"frame-src accounts.google.com",
 		"worker-src 'self'",
 		"object-src 'none'",
