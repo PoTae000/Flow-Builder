@@ -339,7 +339,7 @@ class SessionState {
 		this.saveTimer = setTimeout(() => {
 			this.saveDiagram();
 			this.saveTimer = null;
-		}, 500);
+		}, 300);
 	}
 
 	saveNow() {

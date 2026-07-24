@@ -419,7 +419,7 @@ class SyncState {
 		this.pushTimer = setTimeout(() => {
 			this.pushTimer = null;
 			this.flushPush();
-		}, 3_000);
+		}, 1_000);
 	}
 
 	/**
@@ -585,7 +585,7 @@ class SyncState {
 	 * Polls lightweight /api/sync/version every 5s (near-realtime).
 	 * Only triggers full sync when version changes AND isn't our own push.
 	 */
-	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 5_000) {
+	startPolling(triggerSync: () => void, canPoll: () => boolean, interval = 2_000) {
 		this.pollTrigger = triggerSync;
 		this.canPollFn = canPoll;
 		this.stopPolling();
