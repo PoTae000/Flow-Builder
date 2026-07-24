@@ -274,15 +274,14 @@ export class CollabState {
 
 		this._doc = new Y.Doc();
 
-		// Use MULTIPLE signaling servers so a cold-started/asleep primary
-		// (Render free tier sleeps after 15 min → first join fails until it
-		// wakes) doesn't block joining — peers can rendezvous on any shared
-		// server. Public y-webrtc servers act as always-on fallbacks.
+		// Primary is our own signaling server (PUBLIC_SIGNALING_URL). yjs.dev is
+		// kept as one public fallback so peers can still rendezvous if ours is
+		// briefly unreachable. The old heroku fallbacks were removed — those
+		// hosts shut down in 2022 and only produced endless failed WebSocket
+		// reconnects (the console error spam), never a real connection.
 		const signalingServers = [
 			...(PUBLIC_SIGNALING_URL ? [PUBLIC_SIGNALING_URL] : []),
-			'wss://signaling.yjs.dev',
-			'wss://y-webrtc-signaling-eu.herokuapp.com',
-			'wss://y-webrtc-signaling-us.herokuapp.com'
+			'wss://signaling.yjs.dev'
 		];
 		// Topic: if no token provided, use room ID only (public room)
 		// If token provided, include it for private room
