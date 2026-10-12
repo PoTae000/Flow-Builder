@@ -1,0 +1,359 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	--font-sans: 'Kanit', system-ui, -apple-system, sans-serif;
+
+	/* Light theme UI vars */
+	--ui-bg: #ffffff;
+	--ui-bg-secondary: #f5f5f5;
+	--ui-bg-tertiary: #e5e5e5;
+	--ui-border: #d4d4d4;
+	--ui-border-light: #e5e5e5;
+	--ui-text: #171717;
+	--ui-text-secondary: #525252;
+	--ui-text-muted: #737373;
+	--ui-text-placeholder: #a3a3a3;
+	--ui-hover: #f5f5f5;
+	--ui-accent: #171717;
+	--ui-accent-text: #ffffff;
+}
+
+.dark {
+	--ui-bg: #0a0a0a;
+	--ui-bg-secondary: #171717;
+	--ui-bg-tertiary: #262626;
+	--ui-border: #404040;
+	--ui-border-light: #303030;
+	--ui-text: #e5e5e5;
+	--ui-text-secondary: #a3a3a3;
+	--ui-text-muted: #737373;
+	--ui-text-placeholder: #525252;
+	--ui-hover: #262626;
+	--ui-accent: #e5e5e5;
+	--ui-accent-text: #171717;
+}
+
+/* Force the light palette on a subtree regardless of the global .dark mode —
+   used by the login screen so it always renders light. */
+.force-light {
+	--ui-bg: #ffffff;
+	--ui-bg-secondary: #f5f5f5;
+	--ui-bg-tertiary: #e5e5e5;
+	--ui-border: #d4d4d4;
+	--ui-border-light: #e5e5e5;
+	--ui-text: #171717;
+	--ui-text-secondary: #525252;
+	--ui-text-muted: #737373;
+	--ui-text-placeholder: #a3a3a3;
+	--ui-hover: #f5f5f5;
+	--ui-accent: #171717;
+	--ui-accent-text: #ffffff;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	font-family: var(--font-sans);
+	font-weight: 300;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	background: var(--ui-bg);
+	color: var(--ui-text);
+	transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Smooth theme transition on UI elements (exclude SVG to avoid drag lag) */
+body, aside, div, nav, header, footer, main, section,
+button, input, select, textarea, span, p, h1, h2, h3, h4, h5, h6, a, label {
+	transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* SVG text rendering */
+svg text {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Entity node grab cursor when dragging */
+.entity-node:active {
+	cursor: grabbing;
+}
+
+/* Remove focus outline on SVG interactive elements */
+svg [role="button"]:focus,
+svg [role="button"]:focus-visible {
+	outline: none;
+}
+
+/* Hide all scrollbars globally */
+*::-webkit-scrollbar {
+	display: none;
+}
+
+* {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+/* Mobile bottom sheet animation */
+.mobile-panel {
+	transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mobile-panel.closed {
+	transform: translateY(100%);
+}
+
+/* Sidebar smooth collapse transition */
+.sidebar-transition {
+	width: 280px;
+	min-width: 280px;
+	transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	overflow: hidden;
+}
+
+/* iPad Pro & Tablets (1024px - 1366px) */
+@media (min-width: 1024px) and (max-width: 1366px) {
+	.sidebar-transition {
+		width: 300px;
+		min-width: 300px;
+	}
+}
+
+/* Large Desktop (1367px+) */
+@media (min-width: 1367px) {
+	.sidebar-transition {
+		width: 380px;
+		min-width: 380px;
+	}
+}
+
+/* Modal/panel entrance animations */
+@keyframes fadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+@keyframes slideUp {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+	from { opacity: 0; transform: scale(0.96); }
+	to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in { animation: fadeIn 0.15s ease-out; }
+.animate-slide-up { animation: slideUp 0.2s ease-out; }
+.animate-scale-in { animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+@keyframes panelSlideIn {
+	from { opacity: 0; transform: translateX(100%); }
+	to { opacity: 1; transform: translateX(0); }
+}
+.panel-slide-in { animation: panelSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Touch action for SVG canvas */
+svg.touch-canvas {
+	touch-action: none;
+}
+
+/* Skeleton shimmer loading */
+@keyframes shimmer {
+	0% { background-position: -200% 0; }
+	100% { background-position: 200% 0; }
+}
+.skeleton {
+	background: linear-gradient(90deg, var(--ui-bg-tertiary) 25%, var(--ui-border) 50%, var(--ui-bg-tertiary) 75%);
+	background-size: 200% 100%;
+	animation: shimmer 1.5s ease-in-out infinite;
+	border-radius: 0.375rem;
+}
+
+/* Canvas fade-in on tab switch */
+@keyframes canvasFadeIn { from { opacity: 0.3; } to { opacity: 1; } }
+.canvas-fade-in { animation: canvasFadeIn 0.25s ease-out; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* iPad Pro & Tablet Responsive Optimizations (1024px - 1366px)                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+@media (min-width: 1024px) and (max-width: 1366px) {
+	/* Larger touch targets for form controls only — NOT <button>, which
+	   would distort small icon buttons (they set their own size). Opt-in
+	   text/action buttons can use .touch-target instead. */
+	input[type="checkbox"], input[type="radio"] {
+		min-height: 24px;
+		min-width: 24px;
+	}
+	.touch-target {
+		min-height: 44px;
+		min-width: 44px;
+	}
+
+	/* Optimize toolbar spacing */
+	.toolbar-container {
+		padding: 0.5rem;
+	}
+
+	/* Adjust modal widths for tablets */
+	.modal-dialog,
+	[role="dialog"],
+	.modal,
+	.panel {
+		max-width: min(90vw, 800px);
+	}
+
+	/* Optimize chat/side panels for tablets */
+	.side-panel {
+		width: min(400px, 40vw);
+	}
+
+	/* Better spacing for cards and panels */
+	.card,
+	.panel-card {
+		padding: 1.25rem;
+	}
+
+	/* Optimize form panel padding */
+	.form-panel-content {
+		padding: 1rem;
+	}
+
+	/* Adjust font sizes for better readability on tablets */
+	body {
+		font-size: 15px;
+	}
+
+	/* Optimize search overlay for tablets */
+	.search-overlay {
+		max-width: 500px;
+	}
+
+	/* Optimize dropdown menus for tablets */
+	.dropdown-menu {
+		max-width: 280px;
+	}
+}
+
+/* iPad Pro Landscape Specific (1366 x 1024) */
+@media (min-width: 1360px) and (max-width: 1370px) and (min-height: 1020px) and (max-height: 1030px) {
+	/* Fine-tune for iPad Pro landscape dimensions */
+	.sidebar-transition {
+		width: 320px;
+		min-width: 320px;
+	}
+
+	/* Optimize canvas area */
+	.diagram-canvas {
+		width: calc(100vw - 320px);
+	}
+}
+
+/* iPad Pro Portrait Specific (1024 x 1366) */
+@media (min-width: 1020px) and (max-width: 1030px) and (min-height: 1360px) and (max-height: 1370px) {
+	/* Optimize for portrait mode - use mobile-like bottom sheet */
+	.sidebar-transition {
+		width: 280px;
+		min-width: 280px;
+	}
+
+	/* Compact toolbar for portrait */
+	.toolbar-compact {
+		transform: scale(0.95);
+		transform-origin: top right;
+	}
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+	/* NOTE: do NOT add blanket `button { padding }` here — it bloats every
+	   icon button (delete-tab X, new-tab +, avatar, sync…) until the icon
+	   clips away. Buttons carry their own padding via Tailwind. Opt in with
+	   the .touch-pad utility where a bigger tap area is genuinely wanted. */
+	.touch-pad {
+		padding: 0.75rem 1rem;
+	}
+
+	/* Increase line height for better touch selection */
+	input:not([type="checkbox"]):not([type="radio"]), textarea, select {
+		line-height: 1.6;
+	}
+
+	/* Optimize SVG interaction for touch */
+	svg[role="button"],
+	.entity-node,
+	.flow-node,
+	.dfd-node {
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	/* Prevent double-tap zoom on interactive elements */
+	button, a, input, select, textarea {
+		touch-action: manipulation;
+	}
+
+	/* Optimize canvas pan/zoom gestures */
+	.diagram-canvas {
+		touch-action: none;
+		-webkit-user-select: none;
+		user-select: none;
+	}
+}
+
+/* Optimize for tablet orientation changes */
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
+	/* Landscape mode optimizations */
+	.sidebar-transition {
+		width: 300px;
+		min-width: 300px;
+	}
+
+	/* Compact toolbar in landscape */
+	.toolbar-container {
+		transform: scale(0.98);
+		transform-origin: top right;
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: portrait) {
+	/* Portrait mode optimizations */
+	.sidebar-transition {
+		width: 280px;
+		min-width: 280px;
+	}
+
+	/* More compact toolbar in portrait */
+	.toolbar-container {
+		transform: scale(0.95);
+		transform-origin: top right;
+	}
+
+	/* Adjust minimap size */
+	.minimap {
+		transform: scale(0.9);
+		transform-origin: bottom left;
+	}
+}
+
+/* High DPI displays (Retina, iPad Pro) */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+	/* Sharper text rendering on high DPI displays */
+	body {
+		-webkit-font-smoothing: subpixel-antialiased;
+		-moz-osx-font-smoothing: auto;
+	}
+
+	/* Sharper SVG rendering */
+	svg {
+		shape-rendering: geometricPrecision;
+	}
+
+	/* Adjust border widths for Retina displays */
+	.border,
+	[class*="border-"] {
+		border-width: 0.5px;
+	}
+}

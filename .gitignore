@@ -1,0 +1,45 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+.claude
+.codex
+
+# Local-only notes/scripts (may contain credentials — never commit)
+FIX_INSTRUCTIONS.md
+fix-foreign-key.sql
+PROJECT_REPORT.md
+COMPETITOR_COMPARISON.md
+/docs/
+/README.md
+/schema.sql
+
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+
+# Credentials, local databases, and diagnostic output
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*-output.txt
+*.bak
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

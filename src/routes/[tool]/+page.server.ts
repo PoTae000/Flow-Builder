@@ -1,0 +1,12 @@
+import { error } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+const pages = {
+ 'flowchart-online': { name: 'Flowchart', title: 'สร้าง Flowchart ออนไลน์ — วาดผังงานแบบลากวาง', description: 'สร้าง Flowchart ออนไลน์ด้วยสัญลักษณ์ผังงาน เช่น Process, Decision และ Terminator ลากวางขั้นตอน เชื่อมลูกศร และส่งออกภาพด้วย Flow Builder', intro: 'วาดผังงานเพื่ออธิบายขั้นตอนการทำงาน อัลกอริทึม หรือกระบวนการธุรกิจ ใช้กล่องขั้นตอนและลูกศรให้ผู้อ่านเห็นลำดับตั้งแต่เริ่มจนจบ', items: ['Process: สี่เหลี่ยมสำหรับขั้นตอนหรือการประมวลผล', 'Decision: สี่เหลี่ยมข้าวหลามตัดสำหรับเงื่อนไขและการแยกทาง', 'Terminator: จุดเริ่มต้นและจุดสิ้นสุดของผังงาน'], steps: ['เลือก Flowchart ในเครื่องมือ', 'ลากสัญลักษณ์ลงบนพื้นที่วาดและใส่ข้อความ', 'เชื่อมลูกศรตามลำดับ ตรวจเส้นทาง แล้วส่งออกเป็นภาพ'] },
+ 'dfd-online': { name: 'DFD', title: 'สร้าง DFD ออนไลน์ — Context Diagram ถึง Level 2', description: 'วาด Data Flow Diagram (DFD) ออนไลน์ตั้งแต่ Context Diagram ถึง Level 2 แสดง Process, Data Store, External Entity และการไหลของข้อมูลด้วย Flow Builder', intro: 'DFD หรือ Data Flow Diagram ใช้อธิบายว่าข้อมูลเข้าสู่ระบบ ผ่านกระบวนการใด ถูกจัดเก็บที่ไหน และส่งออกไปหาใคร เหมาะสำหรับการวิเคราะห์ระบบ', items: ['External Entity: บุคคลหรือระบบภายนอกที่รับส่งข้อมูล', 'Process: กระบวนการที่แปลงข้อมูลเข้าเป็นข้อมูลออก', 'Data Store และ Data Flow: แหล่งเก็บข้อมูลและเส้นทางข้อมูล'], steps: ['เลือก DFD แล้วเริ่มจาก Context Diagram', 'เพิ่มผู้เกี่ยวข้องและเชื่อมเส้นพร้อมชื่อข้อมูล', 'แตกกระบวนการเป็น Level 1 และ Level 2 เพื่อลงรายละเอียด'] },
+ 'er-diagram-online': { name: 'ER Diagram', title: 'สร้าง ER Diagram ออนไลน์ — ออกแบบฐานข้อมูล Crow’s Foot', description: 'สร้าง ER Diagram (ERD) ออนไลน์แบบลากวาง ออกแบบ Entity และความสัมพันธ์ด้วยสัญลักษณ์ Crow’s Foot หรือ Chen พร้อมดูโครงสร้าง SQL ด้วย Flow Builder', intro: 'ER Diagram หรือ Entity Relationship Diagram ช่วยวางโครงสร้างฐานข้อมูล แสดง Entity และความสัมพันธ์ก่อนนำไปสร้างตารางจริง เช่น ลูกค้า คำสั่งซื้อ และสินค้า', items: ['Entity: สิ่งที่ต้องจัดเก็บข้อมูล เช่น ลูกค้าหรือสินค้า', 'Crow’s Foot: ใช้สัญลักษณ์ปลายเส้นแสดงจำนวนและเงื่อนไขความสัมพันธ์', 'Chen: แสดงความสัมพันธ์ด้วยรูปเพชร เหมาะกับการอธิบายแบบจำลองข้อมูล'], steps: ['เลือก ER Diagram และรูปแบบสัญลักษณ์ที่ต้องการ', 'ลาก Entity ลงพื้นที่วาด ตั้งชื่อ แล้วเชื่อมความสัมพันธ์', 'ตรวจแบบจำลองและดู SQL ของโครงสร้างใน Live SQL'] }
+};
+export const load: PageServerLoad = ({ params }) => {
+ const page = pages[params.tool as keyof typeof pages];
+ if (!page) error(404, 'ไม่พบหน้า');
+ return { ...page, slug: params.tool };
+};

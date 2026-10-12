@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e40af"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eff6ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#0b1f5e" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Subtle grid -->
+  <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="1">
+    <path d="M0 90 H1200 M0 180 H1200 M0 270 H1200 M0 360 H1200 M0 450 H1200 M0 540 H1200"/>
+    <path d="M120 0 V630 M240 0 V630 M360 0 V630 M480 0 V630 M600 0 V630 M720 0 V630 M840 0 V630 M960 0 V630 M1080 0 V630"/>
+  </g>
+
+  <!-- ===== Right: mini diagram illustration ===== -->
+  <g transform="translate(720,150)" filter="url(#shadow)">
+    <!-- edges -->
+    <g stroke="#93c5fd" stroke-width="3" fill="none">
+      <path d="M110 60 H250"/>
+      <path d="M170 120 V210"/>
+      <path d="M290 250 H150 V270"/>
+    </g>
+    <!-- Entity box 1 -->
+    <g>
+      <rect x="20" y="20" width="150" height="80" rx="12" fill="url(#card)"/>
+      <rect x="20" y="20" width="150" height="28" rx="12" fill="#2563eb"/>
+      <rect x="20" y="36" width="150" height="12" fill="#2563eb"/>
+      <rect x="36" y="60" width="90" height="8" rx="4" fill="#bfdbfe"/>
+      <rect x="36" y="78" width="70" height="8" rx="4" fill="#dbeafe"/>
+    </g>
+    <!-- Decision diamond -->
+    <g>
+      <path d="M250 40 L300 90 L250 140 L200 90 Z" fill="url(#card)"/>
+      <path d="M250 55 L285 90 L250 125 L215 90 Z" fill="#dbeafe"/>
+    </g>
+    <!-- Entity box 2 -->
+    <g>
+      <rect x="95" y="210" width="150" height="80" rx="12" fill="url(#card)"/>
+      <rect x="95" y="210" width="150" height="28" rx="12" fill="#3b82f6"/>
+      <rect x="95" y="226" width="150" height="12" fill="#3b82f6"/>
+      <rect x="111" y="250" width="90" height="8" rx="4" fill="#bfdbfe"/>
+      <rect x="111" y="268" width="60" height="8" rx="4" fill="#dbeafe"/>
+    </g>
+    <!-- Start/End pill -->
+    <rect x="270" y="230" width="150" height="60" rx="30" fill="url(#card)"/>
+    <rect x="300" y="255" width="90" height="10" rx="5" fill="#bfdbfe"/>
+  </g>
+
+  <!-- ===== Left: text ===== -->
+  <!-- Logo chip -->
+  <g transform="translate(90,86)">
+    <rect width="132" height="52" rx="14" fill="#ffffff" fill-opacity="0.14"/>
+    <text x="66" y="35" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700"
+          fill="#ffffff" text-anchor="middle" letter-spacing="2">FLOW</text>
+  </g>
+
+  <text x="90" y="250" font-family="Segoe UI, Arial, sans-serif" font-size="82" font-weight="800" fill="#ffffff">Flow Builder</text>
+
+  <text x="92" y="330" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="600" fill="#dbeafe">ER Diagram · Flowchart · DFD</text>
+
+  <text x="92" y="392" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="400" fill="#bfdbfe">ออกแบบไดอะแกรมออนไลน์ฟรี · มี AI ช่วย · โหมด Quiz</text>
+
+  <!-- Feature pills -->
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="600">
+    <g transform="translate(92,450)">
+      <rect width="180" height="52" rx="26" fill="#ffffff"/>
+      <text x="90" y="34" fill="#1e40af" text-anchor="middle">AI ช่วยออกแบบ</text>
+    </g>
+    <g transform="translate(288,450)">
+      <rect width="150" height="52" rx="26" fill="#ffffff" fill-opacity="0.9"/>
+      <text x="75" y="34" fill="#1e40af" text-anchor="middle">Export SQL</text>
+    </g>
+    <g transform="translate(454,450)">
+      <rect width="150" height="52" rx="26" fill="#ffffff" fill-opacity="0.8"/>
+      <text x="75" y="34" fill="#1e40af" text-anchor="middle">ใช้บนมือถือ</text>
+    </g>
+  </g>
+
+  <text x="90" y="576" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="500" fill="#ffffff" fill-opacity="0.85">suepskun.online</text>
+</svg>

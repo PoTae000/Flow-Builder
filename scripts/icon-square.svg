@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#2563eb"/>
+  <!-- O-vortex mark, centered -->
+  <g transform="translate(256,256) scale(2.1)">
+    <path d="M0,-52 C28,-52 52,-28 52,0 C52,-14 28,-34 0,-34 C-17,-34 -31,-24 -38,-10 C-31,-31 -17,-52 0,-52Z" fill="#ffffff"/>
+    <path d="M52,0 C52,28 28,52 0,52 C14,52 34,28 34,0 C34,-17 24,-31 10,-38 C31,-31 52,-17 52,0Z" fill="#ffffff"/>
+    <path d="M0,52 C-28,52 -52,28 -52,0 C-52,14 -28,34 0,34 C17,34 31,24 38,10 C31,31 17,52 0,52Z" fill="#ffffff"/>
+    <path d="M-52,0 C-52,-28 -28,-52 0,-52 C-14,-52 -34,-28 -34,0 C-34,17 -24,31 -10,38 C-31,31 -52,17 -52,0Z" fill="#ffffff" opacity="0.7"/>
+  </g>
+</svg>
