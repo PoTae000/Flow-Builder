@@ -1,7 +1,6 @@
 <script lang="ts">
 	import EditableAttributeText from './EditableAttributeText.svelte';
-	import AttributeComposer from './AttributeComposer.svelte';
-	import type { AttributeType } from '$lib/types/er';
+	import InlineAttributeInput from './InlineAttributeInput.svelte';
 	import { collab } from '$lib/stores/collab.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { Entity } from '$lib/types/er';
@@ -86,6 +85,7 @@
 	const attrFont = $derived(12 * fontScale);
 	const pkFont = $derived(10 * fontScale);
 	let addingAttribute = $state(false);
+	const displayH = $derived(addingAttribute ? Math.max(r.h, headerH + (entity.attributes.length + 1) * rowH + 8) : r.h);
 	async function startAttribute(event: MouseEvent | KeyboardEvent) {
 		event.stopPropagation();
 		if (diagram.viewOnly || collab.isViewer) return;
@@ -94,11 +94,11 @@
 		diagram.selectEntity(entity.id);
 		addingAttribute = true;
 	}
-	function saveAttribute(text: string, type: AttributeType): boolean {
+	function saveAttribute(text: string): boolean {
 		if (!addingAttribute || diagram.viewOnly || collab.isViewer) return false;
 		const name = sanitizeName(text);
 		if (!name) return false;
-		return !!diagram.addAttribute(entity.id, { name, type });
+		return !!diagram.addAttribute(entity.id, { name, type: 'regular' });
 	}
 </script>
 
@@ -126,7 +126,7 @@
 			x={r.x - 2}
 			y={r.y - 2}
 			width={r.w + 4}
-			height={r.h + 4}
+			height={displayH + 4}
 			fill="none"
 			stroke={colors.selectedStroke}
 			stroke-width="2.5"
@@ -193,7 +193,7 @@
 		x={r.x}
 		y={r.y}
 		width={r.w}
-		height={r.h}
+		height={displayH}
 		fill={bodyFill}
 		stroke={selected ? colors.selectedStroke : accent}
 		rx="0"
@@ -362,7 +362,7 @@
 		{/if}
 		</g>
 		{#if addingAttribute}
-			<AttributeComposer x={r.x} y={r.y + r.h + 5} width={r.w}
+			<InlineAttributeInput x={r.x + 10} y={r.y + headerH + entity.attributes.length * rowH + 4} width={r.w - 14} height={rowH} fontSize={attrFont}
 				onadd={saveAttribute} onclose={() => { addingAttribute = false; }} />
 		{/if}
 	{/if}
