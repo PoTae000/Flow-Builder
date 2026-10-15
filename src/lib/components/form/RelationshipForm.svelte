@@ -3,16 +3,22 @@
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import { i18n } from '$lib/i18n';
 	import type { CardinalityType } from '$lib/types/er';
+	import type { Relationship } from '$lib/types/er';
+	import { untrack } from 'svelte';
+	import { collab } from '$lib/stores/collab.svelte';
 
 	let {
-		onclose
+		onclose, initialEntityA = '', initialEntityB = '', oncreated
 	}: {
 		onclose: () => void;
+		initialEntityA?: string;
+		initialEntityB?: string;
+		oncreated?: (relationship: Relationship) => void;
 	} = $props();
 
 	let relName = $state('');
-	let entityA = $state('');
-	let entityB = $state('');
+	let entityA = $state(untrack(() => initialEntityA));
+	let entityB = $state(untrack(() => initialEntityB));
 	let cardA = $state<CardinalityType>('1');
 	let cardB = $state<CardinalityType>('N');
 
@@ -28,8 +34,9 @@
 
 	function addRelationship() {
 		const name = sanitizeName(relName);
-		if (!entityA || !entityB || entityA === entityB) return;
-		diagram.addRelationship(name, [entityA, entityB], [cardA, cardB]);
+		if (!entityA || !entityB || entityA === entityB || diagram.viewOnly || collab.isViewer) return;
+		const rel = diagram.addRelationship(name, [entityA, entityB], [cardA, cardB]);
+		if (rel) oncreated?.(rel);
 		relName = '';
 		entityA = '';
 		entityB = '';
@@ -44,13 +51,13 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="fixed inset-0 z-40 bg-black/50 animate-fade-in"
+	class="fixed inset-0 z-[70] bg-black/50 animate-fade-in"
 	onclick={onclose}
 	onkeydown={(e) => { if (e.key === 'Escape') onclose(); }}
 ></div>
 
 
-<div class="fixed left-1/2 top-1/2 z-50 w-[380px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl animate-scale-in">
+<div class="fixed left-1/2 top-1/2 z-[80] w-[380px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-bg)] p-5 shadow-2xl animate-scale-in">
 	<div class="mb-4 flex items-center justify-between">
 		<h2 class="text-sm font-normal text-[var(--ui-text)]">{i18n.t('rel.add.title')}</h2>
 		<button

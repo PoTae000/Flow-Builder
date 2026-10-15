@@ -31,6 +31,8 @@
 	import ChenAttributeOval from './ChenAttributeOval.svelte';
 	import FlowNodeShape from './FlowNodeShape.svelte';
 	import FlowConnectionHandles from './FlowConnectionHandles.svelte';
+	import RelationshipForm from '$lib/components/form/RelationshipForm.svelte';
+	import type { ERAnchor } from '$lib/utils/er-ports';
 	import { nearestAnchor as nearestERAnchor } from '$lib/utils/er-ports';
 	import FlowEdgeLine from './FlowEdgeLine.svelte';
 	import InlineTextEditor from './InlineTextEditor.svelte';
@@ -2223,6 +2225,7 @@
 
 
 
+	let pendingERRelationship = $state<{ from: string; to: string; fromAnchor: ERAnchor; toAnchor: ERAnchor } | null>(null);
 	function dropConnection(clientX: number, clientY: number) {
 		if (draggingConnection && diagram.diagramType === 'er') updateConnectionDrag(clientX, clientY);
 		const dc = draggingConnection;
@@ -2239,8 +2242,7 @@
 		} else if (hoveredNodeId) {
 			if (diagram.diagramType === 'er' && !diagram.viewOnly && !collab.isViewer) {
 				const targetRect = entityRects.get(hoveredNodeId);
-				const rel = diagram.addRelationship('', [dc.fromNodeId, hoveredNodeId], ['1', 'N']);
-				if (rel && targetRect) diagram.updateRelationship(rel.id, { fromAnchor: { side: dc.fromSide, ratio: 0.5 }, toAnchor: nearestERAnchor(targetRect, screenToSvg(clientX, clientY)) });
+				if (targetRect) pendingERRelationship = { from: dc.fromNodeId, to: hoveredNodeId, fromAnchor: { side: dc.fromSide, ratio: 0.5 }, toAnchor: nearestERAnchor(targetRect, screenToSvg(clientX, clientY)) };
 			}
 			if (diagram.diagramType === 'flowchart') {
 
@@ -3446,6 +3448,14 @@
 		</g>
 	{/if}
 </svg>
+{#if pendingERRelationship}
+	<RelationshipForm initialEntityA={pendingERRelationship.from} initialEntityB={pendingERRelationship.to}
+		oncreated={(rel) => {
+			const pending = pendingERRelationship;
+			if (pending && rel.entityIds[0] === pending.from && rel.entityIds[1] === pending.to) diagram.updateRelationship(rel.id, { fromAnchor: pending.fromAnchor, toAnchor: pending.toAnchor });
+		}}
+		onclose={() => { pendingERRelationship = null; }} />
+{/if}
 
 
 {#if editingLabel && editingLabel.rect && !editingLabel.nodeId}
