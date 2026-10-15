@@ -1,5 +1,8 @@
 <script lang="ts">
 	import EditableAttributeText from './EditableAttributeText.svelte';
+	import InNodeTextEditor from './InNodeTextEditor.svelte';
+	import { collab } from '$lib/stores/collab.svelte';
+	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { Entity } from '$lib/types/er';
 	import type { Rect } from '$lib/types/geometry';
 	import type { NotationRenderer } from '$lib/renderers/types';
@@ -81,6 +84,22 @@
 	const nameFont = $derived(14 * fontScale);
 	const attrFont = $derived(12 * fontScale);
 	const pkFont = $derived(10 * fontScale);
+	let addingAttribute = $state(false);
+	let attributeDraft = $state('');
+	function startAttribute(event: MouseEvent | KeyboardEvent) {
+		event.stopPropagation();
+		if (diagram.viewOnly || collab.isViewer) return;
+		onattributeedit?.();
+		diagram.selectEntity(entity.id);
+		attributeDraft = '';
+		addingAttribute = true;
+	}
+	function saveAttribute(text: string) {
+		if (!addingAttribute) return;
+		addingAttribute = false;
+		const name = sanitizeName(text);
+		if (name && !diagram.viewOnly && !collab.isViewer) diagram.addAttribute(entity.id, { name, type: 'regular' });
+	}
 </script>
 
 <g
@@ -257,6 +276,12 @@
 		{@const pkFkColWidth = 28}
 		{@const attrStartX = hasPkFk ? r.x + pkFkColWidth : r.x + 10}
 		<g class="entity-attrs" class:attr-morph-in={morphing}>
+			<rect x={r.x} y={r.y + headerH} width={r.w} height={Math.max(0, r.h - headerH)} fill="transparent"
+				role="button" tabindex={diagram.viewOnly || collab.isViewer ? -1 : 0} aria-label="เพิ่ม Attribute ใน {entity.name}"
+				ondblclick={startAttribute}
+				onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); startAttribute(event); } }}>
+				<title>ดับเบิ้ลคลิกพื้นที่ว่างเพื่อเพิ่ม Attribute</title>
+			</rect>
 
 
 		{#if hasPkFk && entity.attributes.length > 0}
@@ -321,7 +346,7 @@
 			{/if}
 		{/each}
 
-		{#if entity.attributes.length === 0}
+		{#if entity.attributes.length === 0 && !addingAttribute}
 			<text
 				x={r.x + r.w / 2}
 				y={r.y + headerH + 16 * fontScale}
@@ -330,11 +355,17 @@
 				font-size={11 * fontScale}
 				fill={colors.attrText}
 				opacity="0.4"
+				pointer-events="none"
 			>
 				(no attributes)
 			</text>
 		{/if}
 		</g>
+		{#if addingAttribute}
+			<InNodeTextEditor x={r.x + 4} y={r.y + headerH + entity.attributes.length * rowH + 2}
+				width={r.w - 8} height={rowH} fontSize={attrFont} color={colors.entityText} fontFamily={diagram.diagramFont}
+				bind:text={attributeDraft} onSave={saveAttribute} onCancel={() => { addingAttribute = false; }} />
+		{/if}
 	{/if}
 </g>
 
