@@ -1,7 +1,6 @@
 <script lang="ts">
 	import EditableAttributeText from './EditableAttributeText.svelte';
 	import InlineAttributeInput from './InlineAttributeInput.svelte';
-	import AttributeTypeSelect from './AttributeTypeSelect.svelte';
 	import { collab } from '$lib/stores/collab.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { Entity } from '$lib/types/er';
@@ -86,8 +85,6 @@
 	const attrFont = $derived(12 * fontScale);
 	const pkFont = $derived(10 * fontScale);
 	let addingAttribute = $state(false);
-	let activeAttributeId = $state<string | null>(null);
-	$effect(() => { if (!selected || addingAttribute) activeAttributeId = null; });
 	const displayH = $derived(addingAttribute ? Math.max(r.h, headerH + (entity.attributes.length + 1) * rowH + 8) : r.h);
 	async function startAttribute(event: MouseEvent | KeyboardEvent) {
 		event.stopPropagation();
@@ -105,10 +102,6 @@
 	}
 </script>
 
-<svelte:window onpointerdowncapture={(event) => {
-	const target = event.target;
-	if (!(target instanceof Element) || !target.closest(`[data-attribute-row="${entity.id}"]`)) activeAttributeId = null;
-}} />
 
 <g
 	class="entity-node"
@@ -306,10 +299,6 @@
 		{#each entity.attributes as attr, i}
 			{@const attrY = r.y + headerH + i * rowH + rowH / 2 + 4}
 			{@const attrTextX = hasPkFk ? attrStartX + 4 : attrStartX}
-			<g data-attribute-row={entity.id} role="button" tabindex={diagram.viewOnly || collab.isViewer ? -1 : 0} aria-label={`เลือก Attribute ${attr.name}`}
-				onclick={(event) => { event.stopPropagation(); if (diagram.viewOnly || collab.isViewer) return; diagram.selectEntity(entity.id); activeAttributeId = attr.id; }}
-				onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); if (!diagram.viewOnly && !collab.isViewer) { diagram.selectEntity(entity.id); activeAttributeId = attr.id; } } }}>
-			<rect x={r.x + 1} y={attrY - rowH / 2} width={r.w - 2} height={rowH} fill="transparent" />
 
 			{#if attr.type === 'primary_key'}
 				<text
@@ -332,7 +321,7 @@
 			{/if}
 
 
-			<EditableAttributeText onedit={onattributeedit} entityId={entity.id} attribute={attr} x={attrTextX} y={attrY - rowH / 2} width={Math.max(30, r.x + r.w - attrTextX - (selected && activeAttributeId === attr.id ? 50 : 4))} height={rowH} fontSize={attrFont}>
+			<EditableAttributeText onedit={onattributeedit} entityId={entity.id} attribute={attr} x={attrTextX} y={attrY - rowH / 2} width={Math.max(30, r.x + r.w - attrTextX - 4)} height={rowH} fontSize={attrFont}>
 <text
 				x={attrTextX}
 				y={attrY}
@@ -344,9 +333,6 @@
 				{attr.name}
 			</text>
 </EditableAttributeText>
-			{#if selected && activeAttributeId === attr.id && !diagram.viewOnly && !collab.isViewer}
-				<AttributeTypeSelect entityId={entity.id} attribute={attr} x={r.x + r.w - 47} y={attrY - rowH / 2 + 1} height={rowH - 2} />
-			{/if}
 
 			{#if attr.type === 'primary_key'}
 				{@const uw = measureNodeText(attr.name, attrFont, diagram.diagramFont, false).textWidth}
@@ -359,7 +345,6 @@
 					stroke-width="1"
 				/>
 			{/if}
-			</g>
 		{/each}
 
 		{#if entity.attributes.length === 0 && !addingAttribute}
