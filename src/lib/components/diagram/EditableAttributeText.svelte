@@ -17,8 +17,11 @@
  function save() {
   if (!editing) return;
   editing = false;
+  if (diagram.viewOnly || collab.isViewer) return;
   const name = sanitizeName(text);
-  if (name && name !== attribute.name) diagram.updateAttribute(entityId, attribute.id, { name });
+  if (!text.trim()) {
+   diagram.removeAttribute(entityId, attribute.id);
+  } else if (name && name !== attribute.name) diagram.updateAttribute(entityId, attribute.id, { name });
  }
  function focus(node: HTMLInputElement) { node.focus(); node.setSelectionRange(node.value.length, node.value.length); }
 </script>
