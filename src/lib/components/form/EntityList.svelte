@@ -55,6 +55,7 @@
 	let editAttrType = $state<AttributeType>('regular');
 
 	async function startAttrEdit(entityId: string, attrId: string, name: string, type: AttributeType) {
+		if (diagram.viewOnly || collab.isViewer) return;
 		diagram.selectEntity(entityId);
 		if (!await collab.acquireLocks([entityId])) return;
 		editingAttrEntityId = entityId;
@@ -307,6 +308,8 @@
 									>
 										<button
 											class="w-fit text-left text-[var(--ui-text-secondary)]"
+											onclick={(e) => { e.stopPropagation(); void startAttrEdit(entity.id, attr.id, attr.name, attr.type); }}
+											title="แก้ชื่อและประเภท Attribute"
 											ondblclick={(e) => e.stopPropagation()}
 										>
 											{#if attr.type === 'primary_key'}

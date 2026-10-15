@@ -1,6 +1,7 @@
 <script lang="ts">
 	import EditableAttributeText from './EditableAttributeText.svelte';
-	import InNodeTextEditor from './InNodeTextEditor.svelte';
+	import AttributeComposer from './AttributeComposer.svelte';
+	import type { AttributeType } from '$lib/types/er';
 	import { collab } from '$lib/stores/collab.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { Entity } from '$lib/types/er';
@@ -85,20 +86,19 @@
 	const attrFont = $derived(12 * fontScale);
 	const pkFont = $derived(10 * fontScale);
 	let addingAttribute = $state(false);
-	let attributeDraft = $state('');
-	function startAttribute(event: MouseEvent | KeyboardEvent) {
+	async function startAttribute(event: MouseEvent | KeyboardEvent) {
 		event.stopPropagation();
 		if (diagram.viewOnly || collab.isViewer) return;
+		if (!await collab.acquireLocks([entity.id])) return;
 		onattributeedit?.();
 		diagram.selectEntity(entity.id);
-		attributeDraft = '';
 		addingAttribute = true;
 	}
-	function saveAttribute(text: string) {
-		if (!addingAttribute) return;
-		addingAttribute = false;
+	function saveAttribute(text: string, type: AttributeType): boolean {
+		if (!addingAttribute || diagram.viewOnly || collab.isViewer) return false;
 		const name = sanitizeName(text);
-		if (name && !diagram.viewOnly && !collab.isViewer) diagram.addAttribute(entity.id, { name, type: 'regular' });
+		if (!name) return false;
+		return !!diagram.addAttribute(entity.id, { name, type });
 	}
 </script>
 
@@ -362,9 +362,8 @@
 		{/if}
 		</g>
 		{#if addingAttribute}
-			<InNodeTextEditor x={r.x + 4} y={r.y + headerH + entity.attributes.length * rowH + 2}
-				width={r.w - 8} height={rowH} fontSize={attrFont} color={colors.entityText} fontFamily={diagram.diagramFont}
-				bind:text={attributeDraft} onSave={saveAttribute} onCancel={() => { addingAttribute = false; }} />
+			<AttributeComposer x={r.x} y={r.y + r.h + 5} width={r.w}
+				onadd={saveAttribute} onclose={() => { addingAttribute = false; }} />
 		{/if}
 	{/if}
 </g>
