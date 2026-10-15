@@ -31,6 +31,7 @@
 	import ChenAttributeOval from './ChenAttributeOval.svelte';
 	import FlowNodeShape from './FlowNodeShape.svelte';
 	import FlowConnectionHandles from './FlowConnectionHandles.svelte';
+	import { nearestAnchor as nearestERAnchor } from '$lib/utils/er-ports';
 	import FlowEdgeLine from './FlowEdgeLine.svelte';
 	import InlineTextEditor from './InlineTextEditor.svelte';
 	import InNodeTextEditor from './InNodeTextEditor.svelte';
@@ -1003,6 +1004,15 @@
 
 		hoveredNodeId = null;
 		hoveredPortSide = null;
+		if (diagram.diagramType === 'er') {
+			for (const [id, rect] of entityRects) {
+				if (id === draggingConnection.fromNodeId) continue;
+				const pad = 14 / diagram.zoom;
+				if (svgPos.x >= rect.x - pad && svgPos.x <= rect.x + rect.width + pad && svgPos.y >= rect.y - pad && svgPos.y <= rect.y + rect.height + pad) {
+					hoveredNodeId = id; hoveredPortSide = nearestERAnchor(rect, svgPos).side; break;
+				}
+			}
+		}
 		if (diagram.diagramType === 'flowchart') {
 			for (const node of diagram.flowNodes) {
 				if (node.id === draggingConnection.fromNodeId && Math.hypot(clientX - draggingConnection.screenStartX, clientY - draggingConnection.screenStartY) < 24) continue;
@@ -1046,6 +1056,12 @@
 		const svgPos = screenToSvg(clientX, clientY);
 
 		let startX = svgPos.x, startY = svgPos.y;
+		if (diagram.diagramType === 'er') {
+			const rect = entityRects.get(nodeId);
+			if (!rect) return;
+			startX = rect.x + (side === 'left' ? 0 : side === 'right' ? rect.width : rect.width / 2);
+			startY = rect.y + (side === 'top' ? 0 : side === 'bottom' ? rect.height : rect.height / 2);
+		}
 		if (diagram.diagramType === 'context') {
 			const node = diagram.dfdNodes.find(n => n.id === nodeId);
 			if (node) {
@@ -2208,6 +2224,7 @@
 
 
 	function dropConnection(clientX: number, clientY: number) {
+		if (draggingConnection && diagram.diagramType === 'er') updateConnectionDrag(clientX, clientY);
 		const dc = draggingConnection;
 		if (!dc) return;
 		if (!hoveredNodeId && diagram.diagramType === 'flowchart') {
@@ -2220,6 +2237,11 @@
 				openConnectMenu(dc.fromNodeId, dc.fromSide, clientX, clientY);
 			}
 		} else if (hoveredNodeId) {
+			if (diagram.diagramType === 'er' && !diagram.viewOnly && !collab.isViewer) {
+				const targetRect = entityRects.get(hoveredNodeId);
+				const rel = diagram.addRelationship('', [dc.fromNodeId, hoveredNodeId], ['1', 'N']);
+				if (rel && targetRect) diagram.updateRelationship(rel.id, { fromAnchor: { side: dc.fromSide, ratio: 0.5 }, toAnchor: nearestERAnchor(targetRect, screenToSvg(clientX, clientY)) });
+			}
 			if (diagram.diagramType === 'flowchart') {
 
 
@@ -2854,6 +2876,9 @@
 						remoteSelectors={collab.connected ? collab.remoteSelectionsByEntity.get(entity.id) : undefined}
 					/>
 					<CommentBadge targetId={entity.id} x={rect.x + rect.width} y={rect.y} />
+					{#if diagram.selectedNodeIdSet.has(entity.id) && diagram.selectedNodeIds.length === 1 && !dragging && !panning && !resizing && !draggingConnection && !diagram.viewOnly && !collab.isViewer}
+						<FlowConnectionHandles node={{ id: entity.id, position: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } }} W={rect.width} H={rect.height} isSelected onStartConnection={handleStartConnection} />
+					{/if}
 
 					{#if editingEntityId === entity.id}
 						<foreignObject
@@ -2900,6 +2925,13 @@
 			{/each}
 
 
+			{#if draggingConnection}
+				<line x1={draggingConnection.startX} y1={draggingConnection.startY} x2={draggingConnection.currentX} y2={draggingConnection.currentY} stroke={colors.selectedStroke} stroke-width={2 / diagram.zoom} stroke-dasharray="6 4" pointer-events="none" />
+				{#if hoveredNodeId && entityRects.get(hoveredNodeId)}
+					{@const target = entityRects.get(hoveredNodeId)!}
+					<rect x={target.x - 3} y={target.y - 3} width={target.width + 6} height={target.height + 6} fill="none" stroke={colors.selectedStroke} stroke-width={2 / diagram.zoom} pointer-events="none" />
+				{/if}
+			{/if}
 			{#each diagram.dyingEntities as entity (entity.id)}
 				{@const rect = entity._dyingRect ?? { x: entity.position.x, y: entity.position.y, width: 160, height: 80 }}
 				{@const perimeter = 2 * (rect.width + rect.height)}
