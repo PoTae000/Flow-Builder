@@ -1,6 +1,7 @@
 <script lang="ts">
 	import EditableAttributeText from './EditableAttributeText.svelte';
 	import InlineAttributeInput from './InlineAttributeInput.svelte';
+	import AttributeTypeSelect from './AttributeTypeSelect.svelte';
 	import { collab } from '$lib/stores/collab.svelte';
 	import { sanitizeName } from '$lib/utils/sanitize';
 	import type { Entity } from '$lib/types/er';
@@ -320,7 +321,7 @@
 
 
 			{@const attrTextX = hasPkFk ? attrStartX + 4 : attrStartX}
-			<EditableAttributeText onedit={onattributeedit} entityId={entity.id} attribute={attr} x={attrTextX} y={attrY - rowH / 2} width={r.x + r.w - attrTextX - 4} height={rowH} fontSize={attrFont}>
+			<EditableAttributeText onedit={onattributeedit} entityId={entity.id} attribute={attr} x={attrTextX} y={attrY - rowH / 2} width={Math.max(30, r.x + r.w - attrTextX - (selected ? 50 : 4))} height={rowH} fontSize={attrFont}>
 <text
 				x={attrTextX}
 				y={attrY}
@@ -332,6 +333,9 @@
 				{attr.name}
 			</text>
 </EditableAttributeText>
+			{#if selected && !diagram.viewOnly && !collab.isViewer}
+				<AttributeTypeSelect entityId={entity.id} attribute={attr} x={r.x + r.w - 47} y={attrY - rowH / 2 + 1} height={rowH - 2} />
+			{/if}
 
 			{#if attr.type === 'primary_key'}
 				{@const uw = measureNodeText(attr.name, attrFont, diagram.diagramFont, false).textWidth}
